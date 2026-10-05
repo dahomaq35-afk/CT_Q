@@ -2,4 +2,6 @@ discord.py
 Flask
 yt-dlp
 PyNaCl
-openai
+faster-whisper
+imageio-ffmpeg
+requests
