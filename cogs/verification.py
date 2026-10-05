@@ -32,9 +32,7 @@ from database import (
 # SETTINGS
 # =========================================================
 
-QURAN_API_URL = (
-    "https://api.alquran.cloud/v1/quran/quran-simple"
-)
+QURAN_API_URL = "https://api.alquran.cloud/v1/quran/quran-simple"
 
 WHISPER_MODEL = os.getenv(
     "WHISPER_MODEL",
@@ -52,16 +50,14 @@ WHISPER_COMPUTE_TYPE = os.getenv(
 )
 
 SAMPLE_DURATION = 30
-
 SAMPLE_START = 5
 
 MIN_WORDS = 5
-
 MIN_QURAN_SCORE = 0.45
 
 
 # =========================================================
-# USER AGENT
+# BROWSER
 # =========================================================
 
 BROWSER_USER_AGENT = (
@@ -70,9 +66,9 @@ BROWSER_USER_AGENT = (
     "Chrome/140.0.0.0 Safari/537.36"
 )
 
-
 HTTP_HEADERS = {
     "User-Agent": BROWSER_USER_AGENT,
+    "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
 }
 
 
@@ -89,28 +85,25 @@ SUPPORTED_DOMAINS = {
     "vm.tiktok.com",
 
     "instagram.com",
-
     "facebook.com",
 }
 
 
 # =========================================================
-# GLOBAL DATA
+# GLOBALS
 # =========================================================
 
 QURAN_AYAHS = []
-
 QURAN_READY = False
 
 WHISPER_MODEL_INSTANCE = None
 
 MODEL_LOCK = None
-
 QURAN_LOCK = None
 
 
 # =========================================================
-# ASYNC LOCK INITIALIZATION
+# LOCKS
 # =========================================================
 
 def initialize_locks():
@@ -119,11 +112,9 @@ def initialize_locks():
     global QURAN_LOCK
 
     if MODEL_LOCK is None:
-
         MODEL_LOCK = asyncio.Lock()
 
     if QURAN_LOCK is None:
-
         QURAN_LOCK = asyncio.Lock()
 
 
@@ -159,17 +150,12 @@ FFMPEG_PATH = get_ffmpeg_path()
 # ARABIC NORMALIZATION
 # =========================================================
 
-def normalize_arabic(
-    text: str
-):
+def normalize_arabic(text: str):
 
     if not text:
-
         return ""
 
-    text = str(
-        text
-    ).lower()
+    text = str(text).lower()
 
     replacements = {
         "أ": "ا",
@@ -222,20 +208,13 @@ def normalize_arabic(
     return text.strip()
 
 
-# =========================================================
-# WORDS
-# =========================================================
-
-def get_words(
-    text: str
-):
+def get_words(text: str):
 
     normalized = normalize_arabic(
         text
     )
 
     if not normalized:
-
         return []
 
     return normalized.split()
@@ -245,22 +224,15 @@ def get_words(
 # DOMAIN
 # =========================================================
 
-def get_domain(
-    url: str
-):
+def get_domain(url: str):
 
     try:
 
-        parsed = urlparse(
-            url
-        )
+        parsed = urlparse(url)
 
         domain = parsed.netloc.lower()
 
-        if domain.startswith(
-            "www."
-        ):
-
+        if domain.startswith("www."):
             domain = domain[4:]
 
         return domain
@@ -270,16 +242,11 @@ def get_domain(
         return ""
 
 
-def is_supported_url(
-    url: str
-):
+def is_supported_url(url: str):
 
-    domain = get_domain(
-        url
-    )
+    domain = get_domain(url)
 
     if not domain:
-
         return False
 
     for supported in SUPPORTED_DOMAINS:
@@ -290,20 +257,18 @@ def is_supported_url(
         )
 
         if domain == clean:
-
             return True
 
         if domain.endswith(
             "." + clean
         ):
-
             return True
 
     return False
 
 
 # =========================================================
-# LOAD QURAN
+# QURAN
 # =========================================================
 
 def download_quran():
@@ -311,9 +276,7 @@ def download_quran():
     request = Request(
         QURAN_API_URL,
         headers={
-            "User-Agent": (
-                "CT-Quran-Bot/1.0"
-            )
+            "User-Agent": "CT-Quran-Bot/1.0"
         }
     )
 
@@ -328,9 +291,7 @@ def download_quran():
             )
         )
 
-    if data.get(
-        "code"
-    ) != 200:
+    if data.get("code") != 200:
 
         raise RuntimeError(
             "Quran API returned an invalid response."
@@ -338,14 +299,8 @@ def download_quran():
 
     ayahs = (
         data
-        .get(
-            "data",
-            {}
-        )
-        .get(
-            "ayahs",
-            []
-        )
+        .get("data", {})
+        .get("ayahs", [])
     )
 
     if not ayahs:
@@ -368,10 +323,7 @@ def download_quran():
         )
 
         if normalized:
-
-            result.append(
-                normalized
-            )
+            result.append(normalized)
 
     return result
 
@@ -384,13 +336,11 @@ async def ensure_quran_loaded():
     initialize_locks()
 
     if QURAN_READY:
-
         return True
 
     async with QURAN_LOCK:
 
         if QURAN_READY:
-
             return True
 
         try:
@@ -404,11 +354,9 @@ async def ensure_quran_loaded():
             )
 
             if not quran:
-
                 return False
 
             QURAN_AYAHS = quran
-
             QURAN_READY = True
 
             print(
@@ -437,7 +385,6 @@ def load_whisper_model():
     global WHISPER_MODEL_INSTANCE
 
     if WHISPER_MODEL_INSTANCE is not None:
-
         return WHISPER_MODEL_INSTANCE
 
     print(
@@ -445,13 +392,11 @@ def load_whisper_model():
     )
 
     print(
-        f"[VERIFICATION] Model: "
-        f"{WHISPER_MODEL}"
+        f"[VERIFICATION] Model: {WHISPER_MODEL}"
     )
 
     print(
-        f"[VERIFICATION] Device: "
-        f"{WHISPER_DEVICE}"
+        f"[VERIFICATION] Device: {WHISPER_DEVICE}"
     )
 
     print(
@@ -479,22 +424,18 @@ async def ensure_whisper_loaded():
     initialize_locks()
 
     if WHISPER_MODEL_INSTANCE is not None:
-
         return WHISPER_MODEL_INSTANCE
 
     async with MODEL_LOCK:
 
         if WHISPER_MODEL_INSTANCE is not None:
-
             return WHISPER_MODEL_INSTANCE
 
         try:
 
-            model = await asyncio.to_thread(
+            return await asyncio.to_thread(
                 load_whisper_model
             )
-
-            return model
 
         except Exception as e:
 
@@ -507,50 +448,113 @@ async def ensure_whisper_loaded():
 
 
 # =========================================================
-# YT-DLP OPTIONS
+# YT-DLP HEADERS
 # =========================================================
 
 def get_ytdlp_headers():
 
     return {
         "User-Agent": BROWSER_USER_AGENT,
-        "Referer": "https://www.tiktok.com/",
         "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+        "Accept": (
+            "text/html,application/xhtml+xml,"
+            "application/xml;q=0.9,*/*;q=0.8"
+        ),
     }
 
 
 # =========================================================
-# EXTRACT VIDEO INFO
+# YT-DLP BASE OPTIONS
 # =========================================================
 
-def extract_info(
-    url: str
-):
+def get_base_ytdlp_options():
 
-    options = {
+    return {
+
         "quiet": True,
+
         "no_warnings": True,
+
         "noplaylist": True,
-        "skip_download": True,
+
+        "nocheckcertificate": True,
 
         "http_headers": get_ytdlp_headers(),
 
+        "socket_timeout": 30,
+
+        "retries": 3,
+
+        "fragment_retries": 3,
+
+        "extractor_retries": 3,
+
+        "concurrent_fragment_downloads": 1,
+
         "extractor_args": {
+
             "tiktok": {
                 "app_name": "musical_ly",
                 "app_version": "39.4.3",
             }
+
         },
     }
 
-    with yt_dlp.YoutubeDL(
-        options
-    ) as ytdl:
 
-        return ytdl.extract_info(
-            url,
-            download=False
+# =========================================================
+# EXTRACT INFO
+# =========================================================
+
+def extract_info(url: str):
+
+    options = get_base_ytdlp_options()
+
+    options["skip_download"] = True
+
+    try:
+
+        with yt_dlp.YoutubeDL(
+            options
+        ) as ytdl:
+
+            return ytdl.extract_info(
+                url,
+                download=False
+            )
+
+    except Exception as first_error:
+
+        print(
+            "[VERIFICATION] "
+            f"Primary extraction failed: {first_error}"
         )
+
+        # Second attempt with minimal options.
+        # Some extractors behave better without
+        # additional options.
+
+        fallback_options = {
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "nocheckcertificate": True,
+            "skip_download": True,
+            "socket_timeout": 30,
+            "retries": 2,
+            "http_headers": {
+                "User-Agent": BROWSER_USER_AGENT,
+            },
+        }
+
+        with yt_dlp.YoutubeDL(
+            fallback_options
+        ) as ytdl:
+
+            return ytdl.extract_info(
+                url,
+                download=False
+            )
 
 
 # =========================================================
@@ -573,27 +577,25 @@ def download_audio_sample(
         "sample.%(ext)s"
     )
 
-    options = {
-        "format": "bestaudio/best",
+    options = get_base_ytdlp_options()
+
+    options.update({
+
+        "format": (
+            "bestaudio[ext=m4a]/"
+            "bestaudio/best"
+        ),
 
         "outtmpl": output_template,
 
-        "quiet": True,
-
-        "no_warnings": True,
-
-        "noplaylist": True,
-
         "ffmpeg_location": FFMPEG_PATH,
 
-        "http_headers": get_ytdlp_headers(),
-
-        "extractor_args": {
-            "tiktok": {
-                "app_name": "musical_ly",
-                "app_version": "39.4.3",
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "wav",
             }
-        },
+        ],
 
         "download_ranges": (
             lambda info, ydl: [
@@ -607,21 +609,73 @@ def download_audio_sample(
             ]
         ),
 
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "wav",
-            }
-        ],
-    }
+    })
 
-    with yt_dlp.YoutubeDL(
-        options
-    ) as ytdl:
+    try:
 
-        ytdl.download(
-            [url]
+        with yt_dlp.YoutubeDL(
+            options
+        ) as ytdl:
+
+            ytdl.download(
+                [url]
+            )
+
+    except Exception as first_error:
+
+        print(
+            "[VERIFICATION] "
+            f"Primary audio download failed: "
+            f"{first_error}"
         )
+
+        # Fallback without download range.
+        # This is slower but can work when a
+        # platform does not support ranged downloads.
+
+        fallback_dir = os.path.join(
+            output_dir,
+            "fallback"
+        )
+
+        os.makedirs(
+            fallback_dir,
+            exist_ok=True
+        )
+
+        fallback_template = os.path.join(
+            fallback_dir,
+            "audio.%(ext)s"
+        )
+
+        fallback_options = get_base_ytdlp_options()
+
+        fallback_options.update({
+
+            "format": "bestaudio/best",
+
+            "outtmpl": fallback_template,
+
+            "ffmpeg_location": FFMPEG_PATH,
+
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "wav",
+                }
+            ],
+
+        })
+
+        with yt_dlp.YoutubeDL(
+            fallback_options
+        ) as ytdl:
+
+            ytdl.download(
+                [url]
+            )
+
+        output_dir = fallback_dir
 
     files = []
 
@@ -634,13 +688,9 @@ def download_audio_sample(
             filename
         )
 
-        if os.path.isfile(
-            path
-        ):
+        if os.path.isfile(path):
 
-            files.append(
-                path
-            )
+            files.append(path)
 
     if not files:
 
@@ -650,13 +700,10 @@ def download_audio_sample(
 
     wav_files = [
         x for x in files
-        if x.lower().endswith(
-            ".wav"
-        )
+        if x.lower().endswith(".wav")
     ]
 
     if wav_files:
-
         return wav_files[0]
 
     return files[0]
@@ -684,6 +731,7 @@ def transcribe_audio(
     )
 
     segments, info = model.transcribe(
+
         audio_file,
 
         language="ar",
@@ -697,6 +745,7 @@ def transcribe_audio(
         vad_filter=True,
 
         condition_on_previous_text=False,
+
     )
 
     texts = []
@@ -706,10 +755,7 @@ def transcribe_audio(
         text = segment.text.strip()
 
         if text:
-
-            texts.append(
-                text
-            )
+            texts.append(text)
 
     transcription = " ".join(
         texts
@@ -719,7 +765,7 @@ def transcribe_audio(
 
 
 # =========================================================
-# SIMILARITY
+# LONGEST COMMON MATCH
 # =========================================================
 
 def longest_common_contiguous(
@@ -728,15 +774,12 @@ def longest_common_contiguous(
 ):
 
     if not a or not b:
-
         return 0
 
     if len(a) > 250:
-
         a = a[:250]
 
     if len(b) > 250:
-
         b = b[:250]
 
     previous = [0] * (
@@ -762,14 +805,19 @@ def longest_common_contiguous(
                     previous[j - 1] + 1
                 )
 
-                if current[j] > best:
-
-                    best = current[j]
+                best = max(
+                    best,
+                    current[j]
+                )
 
         previous = current
 
     return best
 
+
+# =========================================================
+# AYAH SIMILARITY
+# =========================================================
 
 def calculate_ayah_similarity(
     transcript_words,
@@ -777,11 +825,9 @@ def calculate_ayah_similarity(
 ):
 
     if not transcript_words:
-
         return 0.0
 
     if not ayah_words:
-
         return 0.0
 
     transcript_set = set(
@@ -794,7 +840,8 @@ def calculate_ayah_similarity(
 
     overlap = (
         transcript_set
-        & ayah_set
+        &
+        ayah_set
     )
 
     overlap_score = (
@@ -839,7 +886,7 @@ def calculate_ayah_similarity(
 
 
 # =========================================================
-# QURAN MATCH
+# QURAN SCORE
 # =========================================================
 
 def calculate_quran_score(
@@ -876,7 +923,6 @@ def calculate_quran_score(
         )
 
         if not ayah_words:
-
             continue
 
         ayah_set = set(
@@ -885,11 +931,11 @@ def calculate_quran_score(
 
         common = (
             transcript_set
-            & ayah_set
+            &
+            ayah_set
         )
 
         if len(common) < 2:
-
             continue
 
         score = calculate_ayah_similarity(
@@ -898,10 +944,7 @@ def calculate_quran_score(
         )
 
         if score > 0:
-
-            best_scores.append(
-                score
-            )
+            best_scores.append(score)
 
     if not best_scores:
 
@@ -959,7 +1002,7 @@ def calculate_quran_score(
 
 
 # =========================================================
-# AUDIO VERIFICATION
+# VERIFY AUDIO
 # =========================================================
 
 async def verify_audio(
@@ -1000,7 +1043,7 @@ async def verify_audio(
 
         print(
             "[VERIFICATION] "
-            "Downloading audio sample..."
+            "Downloading audio..."
         )
 
         audio_file = await asyncio.to_thread(
@@ -1009,15 +1052,9 @@ async def verify_audio(
             temp_dir
         )
 
-        if not audio_file:
-
-            raise RuntimeError(
-                "Audio sample was not created."
-            )
-
         print(
             "[VERIFICATION] "
-            "Audio sample downloaded."
+            "Audio downloaded."
         )
 
         transcription = await asyncio.to_thread(
@@ -1073,7 +1110,8 @@ async def verify_audio(
 
         if (
             score >= MIN_QURAN_SCORE
-            and result["best_ayah_score"] >= 0.40
+            and
+            result["best_ayah_score"] >= 0.40
         ):
 
             return {
@@ -1114,15 +1152,10 @@ async def verify_audio(
 
     finally:
 
-        try:
-
-            shutil.rmtree(
-                temp_dir,
-                ignore_errors=True
-            )
-
-        except Exception:
-            pass
+        shutil.rmtree(
+            temp_dir,
+            ignore_errors=True
+        )
 
 
 # =========================================================
@@ -1140,11 +1173,8 @@ class VerificationResult:
     ):
 
         self.allowed = allowed
-
         self.reason = reason
-
         self.score = score
-
         self.transcription = transcription
 
 
@@ -1152,9 +1182,7 @@ class VerificationResult:
 # COG
 # =========================================================
 
-class QuranVerification(
-    commands.Cog
-):
+class QuranVerification(commands.Cog):
 
     def __init__(
         self,
@@ -1169,29 +1197,19 @@ class QuranVerification(
             self.prepare_system()
         )
 
-    # =====================================================
-    # PREPARE
-    # =====================================================
-
-    async def prepare_system(
-        self
-    ):
+    async def prepare_system(self):
 
         print(
             "[VERIFICATION] "
-            "Preparing audio verification..."
+            "Preparing verification system..."
         )
 
         await ensure_quran_loaded()
 
         print(
             "[VERIFICATION] "
-            "Audio verification ready."
+            "Verification system ready."
         )
-
-    # =====================================================
-    # VERIFY URL
-    # =====================================================
 
     async def verify_url(
         self,
@@ -1205,9 +1223,7 @@ class QuranVerification(
                 "الرابط غير موجود."
             )
 
-        if not is_supported_url(
-            url
-        ):
+        if not is_supported_url(url):
 
             return VerificationResult(
                 False,
@@ -1225,13 +1241,12 @@ class QuranVerification(
 
             print(
                 "[VERIFICATION] "
-                f"URL extraction error: {e}"
+                f"URL extraction failed: {e}"
             )
 
             return VerificationResult(
                 False,
-                "تعذر قراءة الرابط. "
-                "قد تكون المنصة قد منعت استخراج المقطع."
+                "تعذر قراءة الرابط من المنصة."
             )
 
         if not info:
@@ -1263,7 +1278,7 @@ class QuranVerification(
 
         print(
             "[VERIFICATION] "
-            f"Starting AUDIO check: {title}"
+            f"Checking AUDIO: {title}"
         )
 
         result = await verify_audio(
@@ -1271,15 +1286,11 @@ class QuranVerification(
         )
 
         return VerificationResult(
-            allowed=result["allowed"],
-            reason=result["reason"],
-            score=result["score"],
-            transcription=result["transcription"],
+            result["allowed"],
+            result["reason"],
+            result["score"],
+            result["transcription"]
         )
-
-    # =====================================================
-    # REJECTION DM
-    # =====================================================
 
     async def send_rejection_dm(
         self,
@@ -1292,127 +1303,3 @@ class QuranVerification(
             "يا أخوي، **الأغاني لا تجوز، فتُب إلى الله واتركها، "
             "فباب التوبة مفتوح.**\n\n"
             "﴿إِنَّ اللَّهَ يَغْفِرُ الذُّنُوبَ جَمِيعًا﴾ 🤍\n\n"
-            "اللهم اهدي قلوبنا وقلوبكم، ووفقنا لما تحب وترضى."
-        )
-
-        try:
-
-            await user.send(
-                message
-            )
-
-            return True
-
-        except discord.Forbidden:
-
-            print(
-                f"[VERIFICATION] "
-                f"Cannot DM {user}"
-            )
-
-            return False
-
-        except Exception as e:
-
-            print(
-                f"[VERIFICATION] "
-                f"DM error: {e}"
-            )
-
-            return False
-
-    # =====================================================
-    # VERIFY FOR USER
-    # =====================================================
-
-    async def verify_for_user(
-        self,
-        guild: discord.Guild,
-        user: discord.Member,
-        url: str
-    ):
-
-        result = await self.verify_url(
-            url
-        )
-
-        if result.allowed:
-
-            add_play_history(
-                guild_id=guild.id,
-                user_id=user.id,
-                username=str(user),
-                url=url,
-                title="Audio Quran Verification",
-                source="audio",
-                verified=True,
-                rejected=False
-            )
-
-            print(
-                "[VERIFICATION] "
-                "Quran audio APPROVED."
-            )
-
-            return True, result
-
-        add_rejected_attempt(
-            guild_id=guild.id,
-            user_id=user.id,
-            username=str(user),
-            url=url,
-            reason=result.reason
-        )
-
-        add_play_history(
-            guild_id=guild.id,
-            user_id=user.id,
-            username=str(user),
-            url=url,
-            title="Audio Quran Verification",
-            source="audio",
-            verified=False,
-            rejected=True
-        )
-
-        await self.send_rejection_dm(
-            user,
-            result.reason
-        )
-
-        print(
-            "[VERIFICATION] "
-            "Audio REJECTED."
-        )
-
-        return False, result
-
-    # =====================================================
-    # UNLOAD
-    # =====================================================
-
-    async def cog_unload(
-        self
-    ):
-
-        if (
-            self.startup_task
-            and not self.startup_task.done()
-        ):
-
-            self.startup_task.cancel()
-
-
-# =========================================================
-# SETUP
-# =========================================================
-
-async def setup(
-    bot
-):
-
-    await bot.add_cog(
-        QuranVerification(
-            bot
-        )
-    )
