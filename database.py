@@ -14,20 +14,31 @@ from datetime import datetime, timezone
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-DATA_DIR = os.path.join(BASE_DIR, "data")
+DATA_DIR = os.path.join(
+    BASE_DIR,
+    "data"
+)
 
-DB_FILE = os.path.join(DATA_DIR, "quran_bot.db")
+DB_FILE = os.path.join(
+    DATA_DIR,
+    "quran_bot.db"
+)
 
 
 # =========================================================
-# DATABASE SETUP
+# DATABASE CONNECTION
 # =========================================================
 
 def ensure_data_directory():
-    os.makedirs(DATA_DIR, exist_ok=True)
+
+    os.makedirs(
+        DATA_DIR,
+        exist_ok=True
+    )
 
 
 def get_connection():
+
     ensure_data_directory()
 
     connection = sqlite3.connect(
@@ -38,6 +49,17 @@ def get_connection():
     connection.row_factory = sqlite3.Row
 
     return connection
+
+
+# =========================================================
+# TIME
+# =========================================================
+
+def now():
+
+    return datetime.now(
+        timezone.utc
+    ).isoformat()
 
 
 # =========================================================
@@ -121,17 +143,6 @@ def init_db():
 
 
 # =========================================================
-# TIME
-# =========================================================
-
-def now():
-
-    return datetime.now(
-        timezone.utc
-    ).isoformat()
-
-
-# =========================================================
 # VOICE CHANNEL SETTINGS
 # =========================================================
 
@@ -142,32 +153,37 @@ def set_voice_channel(
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    timestamp = now()
+        cursor = connection.cursor()
 
-    cursor.execute("""
-        INSERT INTO guild_settings (
+        timestamp = now()
+
+        cursor.execute("""
+            INSERT INTO guild_settings (
+                guild_id,
+                voice_channel_id,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?)
+
+            ON CONFLICT(guild_id)
+            DO UPDATE SET
+                voice_channel_id = excluded.voice_channel_id,
+                updated_at = excluded.updated_at
+        """, (
             guild_id,
             voice_channel_id,
-            created_at,
-            updated_at
-        )
-        VALUES (?, ?, ?, ?)
+            timestamp,
+            timestamp
+        ))
 
-        ON CONFLICT(guild_id)
-        DO UPDATE SET
-            voice_channel_id = excluded.voice_channel_id,
-            updated_at = excluded.updated_at
-    """, (
-        guild_id,
-        voice_channel_id,
-        timestamp,
-        timestamp
-    ))
+        connection.commit()
 
-    connection.commit()
-    connection.close()
+    finally:
+
+        connection.close()
 
 
 def get_voice_channel(
@@ -176,22 +192,28 @@ def get_voice_channel(
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    cursor.execute("""
-        SELECT voice_channel_id
-        FROM guild_settings
-        WHERE guild_id = ?
-    """, (guild_id,))
+        cursor = connection.cursor()
 
-    row = cursor.fetchone()
+        cursor.execute("""
+            SELECT voice_channel_id
+            FROM guild_settings
+            WHERE guild_id = ?
+        """, (
+            guild_id,
+        ))
 
-    connection.close()
+        row = cursor.fetchone()
 
-    if not row:
-        return None
+        if not row:
+            return None
 
-    return row["voice_channel_id"]
+        return row["voice_channel_id"]
+
+    finally:
+
+        connection.close()
 
 
 # =========================================================
@@ -211,22 +233,253 @@ def add_play_history(
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    cursor.execute("""
-        INSERT INTO play_history (
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            INSERT INTO play_history (
+                guild_id,
+                user_id,
+                username,
+                url,
+                title,
+                source,
+                verified,
+                rejected,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
             guild_id,
             user_id,
             username,
             url,
             title,
             source,
-            verified,
-            rejected,
-            created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        guild_id,
-        user_id,
-       
+            int(verified),
+            int(rejected),
+            now()
+        ))
+
+        connection.commit()
+
+    finally:
+
+        connection.close()
+
+
+# =========================================================
+# REJECTED ATTEMPTS
+# =========================================================
+
+def add_rejected_attempt(
+    guild_id: int,
+    user_id: int,
+    username: str,
+    url: str,
+    reason: str
+):
+
+    connection = get_connection()
+
+    try:
+
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            INSERT INTO rejected_attempts (
+                guild_id,
+                user_id,
+                username,
+                url,
+                reason,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            guild_id,
+            user_id,
+            username,
+            url,
+            reason,
+            now()
+        ))
+
+        connection.commit()
+
+    finally:
+
+        connection.close()
+
+
+# =========================================================
+# QUEUE
+# =========================================================
+
+def add_to_queue(
+    guild_id: int,
+    user_id: int,
+    username: str,
+    url: str,
+    title: str = "",
+    source: str = ""
+):
+
+    connection = get_connection()
+
+    try:
+
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT COALESCE(
+                MAX(position),
+                0
+            ) + 1
+            FROM queue
+            WHERE guild_id = ?
+        """, (
+            guild_id,
+        ))
+
+        position = cursor.fetchone()[0]
+
+        cursor.execute("""
+            INSERT INTO queue (
+                guild_id,
+                user_id,
+                username,
+                url,
+                title,
+                source,
+                position,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            guild_id,
+            user_id,
+            username,
+            url,
+            title,
+            source,
+            position,
+            now()
+        ))
+
+        connection.commit()
+
+        return cursor.lastrowid
+
+    finally:
+
+        connection.close()
+
+
+def get_queue(
+    guild_id: int
+):
+
+    connection = get_connection()
+
+    try:
+
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT *
+            FROM queue
+            WHERE guild_id = ?
+            ORDER BY position ASC
+        """, (
+            guild_id,
+        ))
+
+        return cursor.fetchall()
+
+    finally:
+
+        connection.close()
+
+
+def get_next_queue_item(
+    guild_id: int
+):
+
+    connection = get_connection()
+
+    try:
+
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT *
+            FROM queue
+            WHERE guild_id = ?
+            ORDER BY position ASC
+            LIMIT 1
+        """, (
+            guild_id,
+        ))
+
+        return cursor.fetchone()
+
+    finally:
+
+        connection.close()
+
+
+def remove_queue_item(
+    queue_id: int
+):
+
+    connection = get_connection()
+
+    try:
+
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            DELETE FROM queue
+            WHERE id = ?
+        """, (
+            queue_id,
+        ))
+
+        connection.commit()
+
+    finally:
+
+        connection.close()
+
+
+def clear_queue(
+    guild_id: int
+):
+
+    connection = get_connection()
+
+    try:
+
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            DELETE FROM queue
+            WHERE guild_id = ?
+        """, (
+            guild_id,
+        ))
+
+        connection.commit()
+
+    finally:
+
+        connection.close()
+
+
+# =========================================================
+# START DATABASE
+# =========================================================
+
+init_db()
