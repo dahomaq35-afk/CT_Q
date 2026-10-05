@@ -5,3 +5,4 @@ PyNaCl
 faster-whisper
 imageio-ffmpeg
 requests
+curl-cffi
