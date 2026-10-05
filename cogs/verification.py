@@ -20,149 +20,582 @@ from database import (
 # SETTINGS
 # =========================================================
 
-QURAN_KEYWORDS = [
-    "quran",
-    "qur'an",
-    "قرآن",
-    "القرآن",
-    "سورة",
-    "سوره",
-    "تلاوة",
-    "تلاوه",
-    "تلاوات",
-    "تجويد",
-    "مرتل",
-    "مرتلة",
-    "حفص",
-    "ورش",
-    "آية",
-    "اية",
-    "آيات",
-    "عبدالباسط",
-    "عبد الباسط",
-    "السديس",
-    "الشريم",
-    "الدوسري",
-    "ياسر الدوسري",
-    "ماهر المعيقلي",
-    "ماهر المعيقلي",
-    "المنشاوي",
-    "المنشاوي",
-    "العفاسي",
-    "سعد الغامدي",
-    "ناصر القطامي",
-    "فارس عباد",
-    "إدريس أبكر",
-    "محمد اللحيدان",
-]
-
-
-# =========================================================
-# URL CHECK
-# =========================================================
-
 SUPPORTED_DOMAINS = {
     "youtube.com",
-    "www.youtube.com",
     "youtu.be",
     "m.youtube.com",
 
     "tiktok.com",
-    "www.tiktok.com",
     "vm.tiktok.com",
 
     "instagram.com",
-    "www.instagram.com",
 
     "facebook.com",
-    "www.facebook.com",
 }
 
 
-def normalize_text(text: str) -> str:
+# =========================================================
+# QURAN KEYWORDS
+# =========================================================
+
+QURAN_KEYWORDS = [
+
+    # English
+    "quran",
+    "qur'an",
+    "quraan",
+    "koran",
+    "holy quran",
+    "surah",
+    "surah al",
+    "surat",
+    "recitation",
+    "quran recitation",
+    "tilawah",
+    "tilawat",
+    "tajweed",
+    "mushaf",
+
+    # Arabic
+    "قرآن",
+    "القرآن",
+    "قران",
+    "القران",
+    "قرآن كريم",
+    "القرآن الكريم",
+    "قران كريم",
+
+    "سورة",
+    "سوره",
+    "سور",
+    "سور القرآن",
+
+    "تلاوة",
+    "تلاوه",
+    "تلاوات",
+    "تلاوة القرآن",
+    "تلاوة قرآنية",
+    "تلاوه قرانيه",
+
+    "تجويد",
+    "ترتيل",
+    "مرتّل",
+    "مرتلة",
+    "مرتل",
+    "مصحف",
+
+    "حفص",
+    "ورش",
+    "قالون",
+    "الدوري",
+
+    "آية",
+    "اية",
+    "آيات",
+    "ايات",
+]
+
+
+# =========================================================
+# RECITERS
+# =========================================================
+
+RECITERS = [
+
+    # Arabic
+    "عبد الباسط",
+    "عبدالباسط",
+    "عبد الباسط عبد الصمد",
+    "عبدالباسط عبدالصمد",
+
+    "السديس",
+    "عبد الرحمن السديس",
+    "عبدالرحمن السديس",
+
+    "الشريم",
+    "سعود الشريم",
+
+    "الدوسري",
+    "ياسر الدوسري",
+
+    "ماهر المعيقلي",
+    "ماهر المعيقلي",
+
+    "المنشاوي",
+    "محمد صديق المنشاوي",
+
+    "العفاسي",
+    "مشاري العفاسي",
+
+    "سعد الغامدي",
+    "القطامي",
+    "ناصر القطامي",
+
+    "فارس عباد",
+
+    "إدريس أبكر",
+    "ادريس ابكر",
+
+    "محمد اللحيدان",
+
+    "خالد الجليل",
+
+    "بندر بليلة",
+    "بندر بن عبدالعزيز بليلة",
+
+    "علي جابر",
+
+    "أحمد العجمي",
+
+    "هاني الرفاعي",
+
+    "صلاح بو خاطر",
+
+    "ناصر القطامي",
+
+    "عبدالله بصفر",
+
+    "عبدالله خياط",
+
+    "محمد أيوب",
+    "محمد ايوب",
+
+    "عمر القزابري",
+
+    "محمود خليل الحصري",
+    "الحصري",
+
+    "مصطفى إسماعيل",
+    "مصطفي اسماعيل",
+
+    "محمد رفعت",
+
+    "الطبلاوي",
+
+    # English transliterations
+    "abdul basit",
+    "abdulbasit",
+    "abdul baset",
+
+    "al sudais",
+    "alsudais",
+    "sudais",
+
+    "al shuraim",
+    "shuraim",
+
+    "yasser al dosari",
+    "yasser al-dosari",
+    "yasser dosari",
+
+    "maher al muaiqly",
+    "maher al-muaiqly",
+    "maher muaiqly",
+
+    "mishary alafasy",
+    "mishary al afasy",
+    "alafasy",
+
+    "al minshawi",
+    "minshawi",
+
+    "saad al ghamdi",
+    "saad al-ghamdi",
+
+    "nasser al qatami",
+    "nasser al-qatami",
+
+    "fahad al kandari",
+]
+
+
+# =========================================================
+# SURAHS
+# =========================================================
+
+SURAHS = [
+
+    "الفاتحة",
+    "البقرة",
+    "آل عمران",
+    "ال عمران",
+    "النساء",
+    "المائدة",
+    "الأنعام",
+    "الانعام",
+    "الأعراف",
+    "الاعراف",
+    "الأنفال",
+    "الانفال",
+    "التوبة",
+    "يونس",
+    "هود",
+    "يوسف",
+    "الرعد",
+    "إبراهيم",
+    "ابراهيم",
+    "الحجر",
+    "النحل",
+    "الإسراء",
+    "الاسراء",
+    "الكهف",
+    "مريم",
+    "طه",
+    "الأنبياء",
+    "الانبياء",
+    "الحج",
+    "المؤمنون",
+    "النور",
+    "الفرقان",
+    "الشعراء",
+    "النمل",
+    "القصص",
+    "العنكبوت",
+    "الروم",
+    "لقمان",
+    "السجدة",
+    "الأحزاب",
+    "الاحزاب",
+    "سبأ",
+    "فاطر",
+    "يس",
+    "الصافات",
+    "ص",
+    "الزمر",
+    "غافر",
+    "فصلت",
+    "الشورى",
+    "الزخرف",
+    "الدخان",
+    "الجاثية",
+    "الأحقاف",
+    "الاحقاف",
+    "محمد",
+    "الفتح",
+    "الحجرات",
+    "ق",
+    "الذاريات",
+    "الطور",
+    "النجم",
+    "القمر",
+    "الرحمن",
+    "الواقعة",
+    "الحديد",
+    "المجادلة",
+    "الحشر",
+    "الممتحنة",
+    "الصف",
+    "الجمعة",
+    "المنافقون",
+    "التغابن",
+    "الطلاق",
+    "التحريم",
+    "الملك",
+    "القلم",
+    "الحاقة",
+    "المعارج",
+    "نوح",
+    "الجن",
+    "المزمل",
+    "المدثر",
+    "القيامة",
+    "الإنسان",
+    "الانسان",
+    "المرسلات",
+    "النبأ",
+    "النازعات",
+    "عبس",
+    "التكوير",
+    "الانفطار",
+    "المطففين",
+    "الانشقاق",
+    "البروج",
+    "الطارق",
+    "الأعلى",
+    "الاعلى",
+    "الغاشية",
+    "الفجر",
+    "البلد",
+    "الشمس",
+    "الليل",
+    "الضحى",
+    "الشرح",
+    "التين",
+    "العلق",
+    "القدر",
+    "البينة",
+    "الزلزلة",
+    "العاديات",
+    "القارعة",
+    "التكاثر",
+    "العصر",
+    "الهمزة",
+    "الفيل",
+    "قريش",
+    "الماعون",
+    "الكوثر",
+    "الكافرون",
+    "النصر",
+    "المسد",
+    "الإخلاص",
+    "الاخلاص",
+    "الفلق",
+    "الناس",
+]
+
+
+# =========================================================
+# NON-QURAN / MUSIC INDICATORS
+# =========================================================
+
+MUSIC_KEYWORDS = [
+
+    # Arabic
+    "اغنية",
+    "أغنية",
+    "اغاني",
+    "أغاني",
+    "اغنيه",
+    "أغنيه",
+    "موسيقى",
+    "موسيقي",
+    "ميوزك",
+    "كليب",
+    "فيديو كليب",
+    "ريمكس",
+    "ريميكس",
+    "حفلة",
+    "حفله",
+    "حفلات",
+    "مطرب",
+    "مطربة",
+    "مغني",
+    "مغنية",
+    "اغنيه جديده",
+    "أغنية جديدة",
+    "شيلة",
+    "شيله",
+
+    # English
+    "song",
+    "songs",
+    "music",
+    "musical",
+    "remix",
+    "nightcore",
+    "slowed",
+    "reverb",
+    "lyrics",
+    "lyric video",
+    "official music",
+    "official audio",
+    "music video",
+    "concert",
+    "singer",
+]
+
+
+# =========================================================
+# NORMALIZE TEXT
+# =========================================================
+
+def normalize_text(
+    text: str
+):
 
     if not text:
         return ""
 
-    text = text.lower().strip()
+    text = str(
+        text
+    ).lower().strip()
 
     replacements = {
         "أ": "ا",
         "إ": "ا",
         "آ": "ا",
+        "ٱ": "ا",
         "ة": "ه",
         "ى": "ي",
+        "ؤ": "و",
+        "ئ": "ي",
     }
 
     for old, new in replacements.items():
-        text = text.replace(old, new)
 
+        text = text.replace(
+            old,
+            new
+        )
+
+    # إزالة التشكيل
     text = re.sub(
         r"[\u064B-\u065F\u0670]",
         "",
         text
     )
 
-    return text
+    # إزالة بعض الرموز
+    text = re.sub(
+        r"[_\-|/\\.,!?()[\]{}:;\"'`~@#$%^&*+=<>]",
+        " ",
+        text
+    )
+
+    # توحيد المسافات
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
+
+    return text.strip()
 
 
-def get_domain(url: str):
+# =========================================================
+# DOMAIN
+# =========================================================
+
+def get_domain(
+    url: str
+):
 
     try:
 
-        parsed = urlparse(url)
+        parsed = urlparse(
+            url
+        )
 
         domain = parsed.netloc.lower()
 
-        if domain.startswith("www."):
+        if domain.startswith(
+            "www."
+        ):
+
             domain = domain[4:]
 
         return domain
 
     except Exception:
+
         return ""
 
 
-def is_supported_url(url: str):
+def is_supported_url(
+    url: str
+):
 
-    domain = get_domain(url)
+    domain = get_domain(
+        url
+    )
 
     if not domain:
+
         return False
 
     for supported in SUPPORTED_DOMAINS:
 
-        supported_clean = supported.replace(
-            "www.",
-            ""
+        supported_clean = (
+            supported
+            .replace(
+                "www.",
+                ""
+            )
+            .lower()
         )
 
         if domain == supported_clean:
+
             return True
 
         if domain.endswith(
             "." + supported_clean
         ):
+
             return True
 
     return False
 
 
 # =========================================================
-# KEYWORD CHECK
+# TEXT MATCHING
 # =========================================================
 
-def keyword_score(
-    title: str,
-    description: str
+def find_matches(
+    text: str,
+    keywords: list
 ):
 
-    text = normalize_text(
-        f"{title} {description}"
+    normalized = normalize_text(
+        text
+    )
+
+    matches = []
+
+    for keyword in keywords:
+
+        normalized_keyword = (
+            normalize_text(
+                keyword
+            )
+        )
+
+        if not normalized_keyword:
+
+            continue
+
+        if normalized_keyword in normalized:
+
+            if keyword not in matches:
+
+                matches.append(
+                    keyword
+                )
+
+    return matches
+
+
+# =========================================================
+# QURAN SCORE
+# =========================================================
+
+def calculate_quran_score(
+    title: str,
+    description: str,
+    uploader: str,
+    channel: str
+):
+
+    title_text = normalize_text(
+        title
+    )
+
+    description_text = normalize_text(
+        description
+    )
+
+    uploader_text = normalize_text(
+        uploader
+    )
+
+    channel_text = normalize_text(
+        channel
+    )
+
+    all_text = (
+        f"{title_text} "
+        f"{description_text} "
+        f"{uploader_text} "
+        f"{channel_text}"
     )
 
     score = 0
+
     matches = []
+
+    # -----------------------------------------------------
+    # Quran keywords
+    # -----------------------------------------------------
 
     for keyword in QURAN_KEYWORDS:
 
@@ -170,10 +603,164 @@ def keyword_score(
             keyword
         )
 
-        if normalized_keyword in text:
+        if normalized_keyword in all_text:
 
-            score += 1
-            matches.append(keyword)
+            if keyword not in matches:
+
+                matches.append(
+                    keyword
+                )
+
+            # العنوان أقوى من الوصف
+            if normalized_keyword in title_text:
+
+                score += 3
+
+            # اسم القارئ / القناة
+            elif (
+                normalized_keyword in uploader_text
+                or normalized_keyword in channel_text
+            ):
+
+                score += 3
+
+            else:
+
+                score += 1
+
+    # -----------------------------------------------------
+    # Reciter
+    # -----------------------------------------------------
+
+    reciter_matches = find_matches(
+        f"{title} {description} {uploader} {channel}",
+        RECITERS
+    )
+
+    if reciter_matches:
+
+        score += 4
+
+        for match in reciter_matches:
+
+            if match not in matches:
+
+                matches.append(
+                    match
+                )
+
+    # -----------------------------------------------------
+    # Surah
+    # -----------------------------------------------------
+
+    surah_matches = find_matches(
+        f"{title} {description}",
+        SURAHS
+    )
+
+    if surah_matches:
+
+        score += 3
+
+        for match in surah_matches:
+
+            if match not in matches:
+
+                matches.append(
+                    match
+                )
+
+    # -----------------------------------------------------
+    # Strong Quran indicators
+    # -----------------------------------------------------
+
+    strong_indicators = [
+        "quran",
+        "qur an",
+        "quraan",
+        "koran",
+        "قران",
+        "القران",
+        "سوره",
+        "تلاوه",
+        "تجويد",
+        "ترتيل",
+        "مصحف",
+        "حفص",
+        "ورش",
+    ]
+
+    strong_matches = []
+
+    for indicator in strong_indicators:
+
+        if normalize_text(
+            indicator
+        ) in all_text:
+
+            strong_matches.append(
+                indicator
+            )
+
+    if strong_matches:
+
+        score += 4
+
+    return {
+        "score": score,
+        "matches": matches,
+        "reciters": reciter_matches,
+        "surahs": surah_matches,
+        "strong": strong_matches,
+    }
+
+
+# =========================================================
+# MUSIC SCORE
+# =========================================================
+
+def calculate_music_score(
+    title: str,
+    description: str,
+    uploader: str,
+    channel: str
+):
+
+    text = (
+        f"{title} "
+        f"{description} "
+        f"{uploader} "
+        f"{channel}"
+    )
+
+    matches = find_matches(
+        text,
+        MUSIC_KEYWORDS
+    )
+
+    score = 0
+
+    normalized_title = normalize_text(
+        title
+    )
+
+    normalized_all = normalize_text(
+        text
+    )
+
+    for keyword in matches:
+
+        normalized_keyword = normalize_text(
+            keyword
+        )
+
+        if normalized_keyword in normalized_title:
+
+            score += 4
+
+        elif normalized_keyword in normalized_all:
+
+            score += 2
 
     return score, matches
 
@@ -197,17 +784,22 @@ class VerificationResult:
 
 
 # =========================================================
-# VERIFICATION
+# VERIFICATION COG
 # =========================================================
 
-class QuranVerification(commands.Cog):
+class QuranVerification(
+    commands.Cog
+):
 
-    def __init__(self, bot):
+    def __init__(
+        self,
+        bot
+    ):
 
         self.bot = bot
 
     # =====================================================
-    # VERIFY
+    # VERIFY URL
     # =====================================================
 
     async def verify_url(
@@ -215,13 +807,20 @@ class QuranVerification(commands.Cog):
         url: str
     ):
 
+        # -------------------------------------------------
+        # URL
+        # -------------------------------------------------
+
         if not url:
+
             return VerificationResult(
                 False,
                 "الرابط غير موجود."
             )
 
-        if not is_supported_url(url):
+        if not is_supported_url(
+            url
+        ):
 
             return VerificationResult(
                 False,
@@ -229,7 +828,7 @@ class QuranVerification(commands.Cog):
             )
 
         # -------------------------------------------------
-        # استخراج معلومات الرابط
+        # YT-DLP
         # -------------------------------------------------
 
         try:
@@ -245,7 +844,9 @@ class QuranVerification(commands.Cog):
 
             def extract():
 
-                with yt_dlp.YoutubeDL(options) as ytdl:
+                with yt_dlp.YoutubeDL(
+                    options
+                ) as ytdl:
 
                     return ytdl.extract_info(
                         url,
@@ -266,6 +867,10 @@ class QuranVerification(commands.Cog):
                 False,
                 "تعذر قراءة المقطع."
             )
+
+        # -------------------------------------------------
+        # INFO
+        # -------------------------------------------------
 
         if not info:
 
@@ -289,95 +894,172 @@ class QuranVerification(commands.Cog):
 
             info = entries[0]
 
-        # -------------------------------------------------
-        # المعلومات
-        # -------------------------------------------------
-
         title = info.get(
             "title",
             ""
-        )
+        ) or ""
 
         description = info.get(
             "description",
             ""
-        )
+        ) or ""
 
         uploader = info.get(
             "uploader",
             ""
-        )
+        ) or ""
 
         channel = info.get(
             "channel",
             ""
-        )
-
-        combined_text = (
-            f"{title} "
-            f"{description} "
-            f"{uploader} "
-            f"{channel}"
-        )
-
-        score, matches = keyword_score(
-            title,
-            combined_text
-        )
+        ) or ""
 
         # -------------------------------------------------
-        # Quran indicators
+        # SCORES
         # -------------------------------------------------
 
-        normalized = normalize_text(
-            combined_text
+        quran = calculate_quran_score(
+            title=title,
+            description=description,
+            uploader=uploader,
+            channel=channel
         )
 
-        strong_indicators = [
-            "قران",
-            "القران",
-            "سوره",
-            "تلاوه",
-            "تجويد",
-            "حفص",
-            "ورش",
-            "quran",
-            "qur'an",
-        ]
-
-        strong_match = any(
-            indicator in normalized
-            for indicator in strong_indicators
+        music_score, music_matches = (
+            calculate_music_score(
+                title=title,
+                description=description,
+                uploader=uploader,
+                channel=channel
+            )
         )
 
+        quran_score = quran["score"]
+
         # -------------------------------------------------
-        # القرار
+        # LOG
         # -------------------------------------------------
 
-        if strong_match and score >= 1:
+        print(
+            "------------------------------------------"
+        )
+
+        print(
+            f"[VERIFICATION] Title: {title}"
+        )
+
+        print(
+            f"[VERIFICATION] Uploader: {uploader}"
+        )
+
+        print(
+            f"[VERIFICATION] Channel: {channel}"
+        )
+
+        print(
+            f"[VERIFICATION] Quran Score: {quran_score}"
+        )
+
+        print(
+            f"[VERIFICATION] Music Score: {music_score}"
+        )
+
+        print(
+            f"[VERIFICATION] Quran Matches: "
+            f"{quran['matches']}"
+        )
+
+        print(
+            f"[VERIFICATION] Music Matches: "
+            f"{music_matches}"
+        )
+
+        print(
+            "------------------------------------------"
+        )
+
+        # =================================================
+        # MUSIC DETECTION
+        # =================================================
+
+        # إذا كان فيه مؤشر موسيقى قوي جدًا
+        # نرفضه حتى لو كان فيه كلمة قرآن بشكل عابر.
+
+        if music_score >= 6:
+
+            return VerificationResult(
+                False,
+                "تم اكتشاف مؤشرات على أن المقطع أغنية أو موسيقى.",
+                quran_score
+            )
+
+        # =================================================
+        # QURAN ACCEPTANCE
+        # =================================================
+
+        # -------------------------------------------------
+        # قارئ معروف
+        # -------------------------------------------------
+
+        if quran["reciters"]:
 
             return VerificationResult(
                 True,
-                "تم التحقق من أن المقطع قرآن.",
-                score
+                "تم التعرف على اسم قارئ قرآن.",
+                quran_score
             )
 
-        if score >= 2:
+        # -------------------------------------------------
+        # اسم سورة + مؤشر قرآن
+        # -------------------------------------------------
+
+        if (
+            quran["surahs"]
+            and quran["strong"]
+        ):
 
             return VerificationResult(
                 True,
-                "تم التحقق من محتوى المقطع.",
-                score
+                "تم التعرف على السورة ومؤشر قرآني.",
+                quran_score
             )
+
+        # -------------------------------------------------
+        # مؤشرات قرآن قوية
+        # -------------------------------------------------
+
+        if quran["strong"]:
+
+            return VerificationResult(
+                True,
+                "تم التعرف على مؤشرات قوية للمحتوى القرآني.",
+                quran_score
+            )
+
+        # -------------------------------------------------
+        # أكثر من مؤشر قرآن
+        # -------------------------------------------------
+
+        if quran_score >= 5:
+
+            return VerificationResult(
+                True,
+                "تم التحقق من أن المقطع قرآني.",
+                quran_score
+            )
+
+        # -------------------------------------------------
+        # FINAL REJECTION
+        # -------------------------------------------------
 
         return VerificationResult(
             False,
-            "المقطع لم يجتز التحقق من كونه قرآنًا.",
-            score
+            "المقطع لم يحتوي على مؤشرات كافية تثبت أنه قرآن.",
+            quran_score
         )
 
     # =====================================================
-    # REJECT MESSAGE
+    # REJECTION DM
     # =====================================================
 
     async def send_rejection_dm(
@@ -419,7 +1101,7 @@ class QuranVerification(commands.Cog):
             return False
 
     # =====================================================
-    # HANDLE VERIFICATION
+    # VERIFY FOR USER
     # =====================================================
 
     async def verify_for_user(
@@ -433,12 +1115,28 @@ class QuranVerification(commands.Cog):
             url
         )
 
+        # -------------------------------------------------
+        # APPROVED
+        # -------------------------------------------------
+
         if result.allowed:
+
+            # تسجيل التشغيل المقبول
+            add_play_history(
+                guild_id=guild.id,
+                user_id=user.id,
+                username=str(user),
+                url=url,
+                title="",
+                source="",
+                verified=True,
+                rejected=False
+            )
 
             return True, result
 
         # -------------------------------------------------
-        # Save rejection
+        # REJECTED
         # -------------------------------------------------
 
         add_rejected_attempt(
@@ -461,7 +1159,7 @@ class QuranVerification(commands.Cog):
         )
 
         # -------------------------------------------------
-        # DM
+        # SEND DM
         # -------------------------------------------------
 
         await self.send_rejection_dm(
@@ -476,7 +1174,9 @@ class QuranVerification(commands.Cog):
 # SETUP
 # =========================================================
 
-async def setup(bot):
+async def setup(
+    bot
+):
 
     await bot.add_cog(
         QuranVerification(bot)
