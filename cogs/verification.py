@@ -1,415 +1,90 @@
 # =========================================================
 # CT QURAN BOT
-# verification.py
+# cogs/verification.py
+#
+# AUDIO-BASED QURAN VERIFICATION
 # =========================================================
-
+import os
 import re
+import json
 import asyncio
+import tempfile
+import subprocess
+from urllib.request import Request, urlopen
 from urllib.parse import urlparse
-
 import discord
+import yt_dlp
 from discord.ext import commands
-
+from openai import OpenAI
 from database import (
     add_play_history,
     add_rejected_attempt,
 )
-
-
 # =========================================================
 # SETTINGS
 # =========================================================
-
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+QURAN_API_URL = (
+    "https://api.alquran.cloud/v1/quran/quran-simple"
+)
+TRANSCRIPTION_MODEL = os.getenv(
+    "QURAN_TRANSCRIPTION_MODEL",
+    "gpt-4o-mini-transcribe"
+)
+# مدة العينة الصوتية
+SAMPLE_DURATION = 30
+# بداية العينة
+SAMPLE_START = 5
+# الحد الأدنى للتطابق
+MIN_QURAN_MATCH = 0.48
+# إذا كان النص قصير جدًا لا نعتمد عليه
+MIN_TRANSCRIPTION_LENGTH = 20
+# =========================================================
+# SUPPORTED DOMAINS
+# =========================================================
 SUPPORTED_DOMAINS = {
     "youtube.com",
     "youtu.be",
     "m.youtube.com",
-
     "tiktok.com",
     "vm.tiktok.com",
-
     "instagram.com",
-
     "facebook.com",
 }
-
-
 # =========================================================
-# QURAN KEYWORDS
+# OPENAI
 # =========================================================
-
-QURAN_KEYWORDS = [
-
-    # English
-    "quran",
-    "qur'an",
-    "quraan",
-    "koran",
-    "holy quran",
-    "surah",
-    "surah al",
-    "surat",
-    "recitation",
-    "quran recitation",
-    "tilawah",
-    "tilawat",
-    "tajweed",
-    "mushaf",
-
-    # Arabic
-    "قرآن",
-    "القرآن",
-    "قران",
-    "القران",
-    "قرآن كريم",
-    "القرآن الكريم",
-    "قران كريم",
-
-    "سورة",
-    "سوره",
-    "سور",
-    "سور القرآن",
-
-    "تلاوة",
-    "تلاوه",
-    "تلاوات",
-    "تلاوة القرآن",
-    "تلاوة قرآنية",
-    "تلاوه قرانيه",
-
-    "تجويد",
-    "ترتيل",
-    "مرتّل",
-    "مرتلة",
-    "مرتل",
-    "مصحف",
-
-    "حفص",
-    "ورش",
-    "قالون",
-    "الدوري",
-
-    "آية",
-    "اية",
-    "آيات",
-    "ايات",
-]
-
-
+openai_client = None
+if OPENAI_API_KEY:
+    try:
+        openai_client = OpenAI(
+            api_key=OPENAI_API_KEY
+        )
+        print(
+            "[VERIFICATION] OpenAI audio verification enabled."
+        )
+    except Exception as e:
+        print(
+            f"[VERIFICATION] OpenAI initialization failed: {e}"
+        )
+else:
+    print(
+        "[VERIFICATION] WARNING: OPENAI_API_KEY is missing."
+    )
 # =========================================================
-# RECITERS
+# NORMALIZE ARABIC
 # =========================================================
-
-RECITERS = [
-
-    # Arabic
-    "عبد الباسط",
-    "عبدالباسط",
-    "عبد الباسط عبد الصمد",
-    "عبدالباسط عبدالصمد",
-
-    "السديس",
-    "عبد الرحمن السديس",
-    "عبدالرحمن السديس",
-
-    "الشريم",
-    "سعود الشريم",
-
-    "الدوسري",
-    "ياسر الدوسري",
-
-    "ماهر المعيقلي",
-    "ماهر المعيقلي",
-
-    "المنشاوي",
-    "محمد صديق المنشاوي",
-
-    "العفاسي",
-    "مشاري العفاسي",
-
-    "سعد الغامدي",
-    "القطامي",
-    "ناصر القطامي",
-
-    "فارس عباد",
-
-    "إدريس أبكر",
-    "ادريس ابكر",
-
-    "محمد اللحيدان",
-
-    "خالد الجليل",
-
-    "بندر بليلة",
-    "بندر بن عبدالعزيز بليلة",
-
-    "علي جابر",
-
-    "أحمد العجمي",
-
-    "هاني الرفاعي",
-
-    "صلاح بو خاطر",
-
-    "ناصر القطامي",
-
-    "عبدالله بصفر",
-
-    "عبدالله خياط",
-
-    "محمد أيوب",
-    "محمد ايوب",
-
-    "عمر القزابري",
-
-    "محمود خليل الحصري",
-    "الحصري",
-
-    "مصطفى إسماعيل",
-    "مصطفي اسماعيل",
-
-    "محمد رفعت",
-
-    "الطبلاوي",
-
-    # English transliterations
-    "abdul basit",
-    "abdulbasit",
-    "abdul baset",
-
-    "al sudais",
-    "alsudais",
-    "sudais",
-
-    "al shuraim",
-    "shuraim",
-
-    "yasser al dosari",
-    "yasser al-dosari",
-    "yasser dosari",
-
-    "maher al muaiqly",
-    "maher al-muaiqly",
-    "maher muaiqly",
-
-    "mishary alafasy",
-    "mishary al afasy",
-    "alafasy",
-
-    "al minshawi",
-    "minshawi",
-
-    "saad al ghamdi",
-    "saad al-ghamdi",
-
-    "nasser al qatami",
-    "nasser al-qatami",
-
-    "fahad al kandari",
-]
-
-
-# =========================================================
-# SURAHS
-# =========================================================
-
-SURAHS = [
-
-    "الفاتحة",
-    "البقرة",
-    "آل عمران",
-    "ال عمران",
-    "النساء",
-    "المائدة",
-    "الأنعام",
-    "الانعام",
-    "الأعراف",
-    "الاعراف",
-    "الأنفال",
-    "الانفال",
-    "التوبة",
-    "يونس",
-    "هود",
-    "يوسف",
-    "الرعد",
-    "إبراهيم",
-    "ابراهيم",
-    "الحجر",
-    "النحل",
-    "الإسراء",
-    "الاسراء",
-    "الكهف",
-    "مريم",
-    "طه",
-    "الأنبياء",
-    "الانبياء",
-    "الحج",
-    "المؤمنون",
-    "النور",
-    "الفرقان",
-    "الشعراء",
-    "النمل",
-    "القصص",
-    "العنكبوت",
-    "الروم",
-    "لقمان",
-    "السجدة",
-    "الأحزاب",
-    "الاحزاب",
-    "سبأ",
-    "فاطر",
-    "يس",
-    "الصافات",
-    "ص",
-    "الزمر",
-    "غافر",
-    "فصلت",
-    "الشورى",
-    "الزخرف",
-    "الدخان",
-    "الجاثية",
-    "الأحقاف",
-    "الاحقاف",
-    "محمد",
-    "الفتح",
-    "الحجرات",
-    "ق",
-    "الذاريات",
-    "الطور",
-    "النجم",
-    "القمر",
-    "الرحمن",
-    "الواقعة",
-    "الحديد",
-    "المجادلة",
-    "الحشر",
-    "الممتحنة",
-    "الصف",
-    "الجمعة",
-    "المنافقون",
-    "التغابن",
-    "الطلاق",
-    "التحريم",
-    "الملك",
-    "القلم",
-    "الحاقة",
-    "المعارج",
-    "نوح",
-    "الجن",
-    "المزمل",
-    "المدثر",
-    "القيامة",
-    "الإنسان",
-    "الانسان",
-    "المرسلات",
-    "النبأ",
-    "النازعات",
-    "عبس",
-    "التكوير",
-    "الانفطار",
-    "المطففين",
-    "الانشقاق",
-    "البروج",
-    "الطارق",
-    "الأعلى",
-    "الاعلى",
-    "الغاشية",
-    "الفجر",
-    "البلد",
-    "الشمس",
-    "الليل",
-    "الضحى",
-    "الشرح",
-    "التين",
-    "العلق",
-    "القدر",
-    "البينة",
-    "الزلزلة",
-    "العاديات",
-    "القارعة",
-    "التكاثر",
-    "العصر",
-    "الهمزة",
-    "الفيل",
-    "قريش",
-    "الماعون",
-    "الكوثر",
-    "الكافرون",
-    "النصر",
-    "المسد",
-    "الإخلاص",
-    "الاخلاص",
-    "الفلق",
-    "الناس",
-]
-
-
-# =========================================================
-# NON-QURAN / MUSIC INDICATORS
-# =========================================================
-
-MUSIC_KEYWORDS = [
-
-    # Arabic
-    "اغنية",
-    "أغنية",
-    "اغاني",
-    "أغاني",
-    "اغنيه",
-    "أغنيه",
-    "موسيقى",
-    "موسيقي",
-    "ميوزك",
-    "كليب",
-    "فيديو كليب",
-    "ريمكس",
-    "ريميكس",
-    "حفلة",
-    "حفله",
-    "حفلات",
-    "مطرب",
-    "مطربة",
-    "مغني",
-    "مغنية",
-    "اغنيه جديده",
-    "أغنية جديدة",
-    "شيلة",
-    "شيله",
-
-    # English
-    "song",
-    "songs",
-    "music",
-    "musical",
-    "remix",
-    "nightcore",
-    "slowed",
-    "reverb",
-    "lyrics",
-    "lyric video",
-    "official music",
-    "official audio",
-    "music video",
-    "concert",
-    "singer",
-]
-
-
-# =========================================================
-# NORMALIZE TEXT
-# =========================================================
-
-def normalize_text(
+def normalize_arabic(
     text: str
 ):
-
     if not text:
         return ""
-
     text = str(
         text
-    ).lower().strip()
-
+    ).lower()
+    # -----------------------------------------------------
+    # Arabic normalization
+    # -----------------------------------------------------
     replacements = {
         "أ": "ا",
         "إ": "ا",
@@ -420,654 +95,729 @@ def normalize_text(
         "ؤ": "و",
         "ئ": "ي",
     }
-
     for old, new in replacements.items():
-
         text = text.replace(
             old,
             new
         )
-
-    # إزالة التشكيل
+    # -----------------------------------------------------
+    # Remove tashkeel
+    # -----------------------------------------------------
     text = re.sub(
         r"[\u064B-\u065F\u0670]",
         "",
         text
     )
-
-    # إزالة بعض الرموز
+    # -----------------------------------------------------
+    # Remove Quran pause marks
+    # -----------------------------------------------------
     text = re.sub(
-        r"[_\-|/\\.,!?()[\]{}:;\"'`~@#$%^&*+=<>]",
+        r"[\u06D6-\u06ED]",
+        "",
+        text
+    )
+    # -----------------------------------------------------
+    # Remove punctuation
+    # -----------------------------------------------------
+    text = re.sub(
+        r"[^\w\s\u0600-\u06FF]",
         " ",
         text
     )
-
-    # توحيد المسافات
+    # -----------------------------------------------------
+    # Remove English / numbers
+    # -----------------------------------------------------
+    text = re.sub(
+        r"[a-zA-Z0-9]+",
+        " ",
+        text
+    )
+    # -----------------------------------------------------
+    # Normalize spaces
+    # -----------------------------------------------------
     text = re.sub(
         r"\s+",
         " ",
         text
     )
-
     return text.strip()
-
-
 # =========================================================
-# DOMAIN
+# URL
 # =========================================================
-
 def get_domain(
     url: str
 ):
-
     try:
-
         parsed = urlparse(
             url
         )
-
         domain = parsed.netloc.lower()
-
         if domain.startswith(
             "www."
         ):
-
             domain = domain[4:]
-
         return domain
-
     except Exception:
-
         return ""
-
-
 def is_supported_url(
     url: str
 ):
-
     domain = get_domain(
         url
     )
-
     if not domain:
-
         return False
-
     for supported in SUPPORTED_DOMAINS:
-
-        supported_clean = (
-            supported
-            .replace(
-                "www.",
+        if domain == supported:
+            return True
+        if domain.endswith(
+            "." + supported
+        ):
+            return True
+    return False
+# =========================================================
+# QURAN DATA
+# =========================================================
+def download_quran_text():
+    request = Request(
+        QURAN_API_URL,
+        headers={
+            "User-Agent": "CT-Quran-Bot/1.0"
+        }
+    )
+    with urlopen(
+        request,
+        timeout=30
+    ) as response:
+        raw = response.read()
+    data = json.loads(
+        raw.decode(
+            "utf-8"
+        )
+    )
+    if data.get("code") != 200:
+        raise RuntimeError(
+            "Quran API returned an invalid response."
+        )
+    ayahs = (
+        data
+        .get("data", {})
+        .get("ayahs", [])
+    )
+    if not ayahs:
+        raise RuntimeError(
+            "Quran text was not returned."
+        )
+    return [
+        normalize_arabic(
+            ayah.get(
+                "text",
                 ""
             )
-            .lower()
         )
-
-        if domain == supported_clean:
-
-            return True
-
-        if domain.endswith(
-            "." + supported_clean
-        ):
-
-            return True
-
-    return False
-
-
-# =========================================================
-# TEXT MATCHING
-# =========================================================
-
-def find_matches(
-    text: str,
-    keywords: list
-):
-
-    normalized = normalize_text(
-        text
-    )
-
-    matches = []
-
-    for keyword in keywords:
-
-        normalized_keyword = (
-            normalize_text(
-                keyword
-            )
-        )
-
-        if not normalized_keyword:
-
-            continue
-
-        if normalized_keyword in normalized:
-
-            if keyword not in matches:
-
-                matches.append(
-                    keyword
-                )
-
-    return matches
-
-
-# =========================================================
-# QURAN SCORE
-# =========================================================
-
-def calculate_quran_score(
-    title: str,
-    description: str,
-    uploader: str,
-    channel: str
-):
-
-    title_text = normalize_text(
-        title
-    )
-
-    description_text = normalize_text(
-        description
-    )
-
-    uploader_text = normalize_text(
-        uploader
-    )
-
-    channel_text = normalize_text(
-        channel
-    )
-
-    all_text = (
-        f"{title_text} "
-        f"{description_text} "
-        f"{uploader_text} "
-        f"{channel_text}"
-    )
-
-    score = 0
-
-    matches = []
-
-    # -----------------------------------------------------
-    # Quran keywords
-    # -----------------------------------------------------
-
-    for keyword in QURAN_KEYWORDS:
-
-        normalized_keyword = normalize_text(
-            keyword
-        )
-
-        if normalized_keyword in all_text:
-
-            if keyword not in matches:
-
-                matches.append(
-                    keyword
-                )
-
-            # العنوان أقوى من الوصف
-            if normalized_keyword in title_text:
-
-                score += 3
-
-            # اسم القارئ / القناة
-            elif (
-                normalized_keyword in uploader_text
-                or normalized_keyword in channel_text
-            ):
-
-                score += 3
-
-            else:
-
-                score += 1
-
-    # -----------------------------------------------------
-    # Reciter
-    # -----------------------------------------------------
-
-    reciter_matches = find_matches(
-        f"{title} {description} {uploader} {channel}",
-        RECITERS
-    )
-
-    if reciter_matches:
-
-        score += 4
-
-        for match in reciter_matches:
-
-            if match not in matches:
-
-                matches.append(
-                    match
-                )
-
-    # -----------------------------------------------------
-    # Surah
-    # -----------------------------------------------------
-
-    surah_matches = find_matches(
-        f"{title} {description}",
-        SURAHS
-    )
-
-    if surah_matches:
-
-        score += 3
-
-        for match in surah_matches:
-
-            if match not in matches:
-
-                matches.append(
-                    match
-                )
-
-    # -----------------------------------------------------
-    # Strong Quran indicators
-    # -----------------------------------------------------
-
-    strong_indicators = [
-        "quran",
-        "qur an",
-        "quraan",
-        "koran",
-        "قران",
-        "القران",
-        "سوره",
-        "تلاوه",
-        "تجويد",
-        "ترتيل",
-        "مصحف",
-        "حفص",
-        "ورش",
+        for ayah in ayahs
+        if ayah.get("text")
     ]
-
-    strong_matches = []
-
-    for indicator in strong_indicators:
-
-        if normalize_text(
-            indicator
-        ) in all_text:
-
-            strong_matches.append(
-                indicator
+# =========================================================
+# QURAN DATABASE
+# =========================================================
+QURAN_AYAHS = []
+QURAN_READY = False
+def load_quran():
+    global QURAN_AYAHS
+    global QURAN_READY
+    try:
+        print(
+            "[VERIFICATION] Downloading Quran text..."
+        )
+        QURAN_AYAHS = download_quran_text()
+        QURAN_READY = bool(
+            QURAN_AYAHS
+        )
+        print(
+            f"[VERIFICATION] Loaded "
+            f"{len(QURAN_AYAHS)} Quran ayahs."
+        )
+    except Exception as e:
+        QURAN_READY = False
+        print(
+            f"[VERIFICATION] Failed to load Quran: {e}"
+        )
+# =========================================================
+# TEXT TOKENIZATION
+# =========================================================
+def words(
+    text: str
+):
+    return [
+        word
+        for word in normalize_arabic(
+            text
+        ).split()
+        if word
+    ]
+# =========================================================
+# QURAN MATCH
+# =========================================================
+def calculate_quran_match(
+    transcription: str
+):
+    if not QURAN_READY:
+        return {
+            "score": 0.0,
+            "matched_ayahs": 0,
+            "matched_words": 0,
+            "total_words": 0,
+        }
+    transcript_words = words(
+        transcription
+    )
+    if len(
+        transcript_words
+    ) < 5:
+        return {
+            "score": 0.0,
+            "matched_ayahs": 0,
+            "matched_words": 0,
+            "total_words": len(
+                transcript_words
+            ),
+        }
+    # -----------------------------------------------------
+    # Create rolling phrases
+    # -----------------------------------------------------
+    phrase_sizes = [
+        5,
+        7,
+        10,
+    ]
+    transcript_phrases = set()
+    for size in phrase_sizes:
+        if len(
+            transcript_words
+        ) < size:
+            continue
+        for index in range(
+            0,
+            len(transcript_words) - size + 1
+        ):
+            phrase = " ".join(
+                transcript_words[
+                    index:index + size
+                ]
             )
-
-    if strong_matches:
-
-        score += 4
-
+            transcript_phrases.add(
+                phrase
+            )
+    # -----------------------------------------------------
+    # Quran index
+    # -----------------------------------------------------
+    matched_ayahs = 0
+    matched_words = 0
+    for ayah in QURAN_AYAHS:
+        ayah_words = words(
+            ayah
+        )
+        if not ayah_words:
+            continue
+        ayah_text = " ".join(
+            ayah_words
+        )
+        # ---------------------------------------------
+        # Exact phrase match
+        # ---------------------------------------------
+        found_phrase = False
+        for size in phrase_sizes:
+            if len(
+                ayah_words
+            ) < size:
+                continue
+            for index in range(
+                0,
+                len(ayah_words) - size + 1
+            ):
+                phrase = " ".join(
+                    ayah_words[
+                        index:index + size
+                    ]
+                )
+                if phrase in transcript_phrases:
+                    found_phrase = True
+                    break
+            if found_phrase:
+                break
+        if found_phrase:
+            matched_ayahs += 1
+            matched_words += min(
+                len(ayah_words),
+                10
+            )
+            continue
+        # ---------------------------------------------
+        # Word overlap fallback
+        # ---------------------------------------------
+        ayah_set = set(
+            ayah_words
+        )
+        transcript_set = set(
+            transcript_words
+        )
+        overlap = (
+            ayah_set
+            & transcript_set
+        )
+        if len(
+            overlap
+        ) >= 5:
+            matched_ayahs += 1
+            matched_words += len(
+                overlap
+            )
+    # -----------------------------------------------------
+    # Score
+    # -----------------------------------------------------
+    total_words = len(
+        transcript_words
+    )
+    if total_words == 0:
+        score = 0.0
+    else:
+        score = (
+            matched_words
+            / max(
+                total_words,
+                1
+            )
+        )
+    # Cap
+    score = min(
+        score,
+        1.0
+    )
     return {
         "score": score,
-        "matches": matches,
-        "reciters": reciter_matches,
-        "surahs": surah_matches,
-        "strong": strong_matches,
+        "matched_ayahs": matched_ayahs,
+        "matched_words": matched_words,
+        "total_words": total_words,
     }
-
-
 # =========================================================
-# MUSIC SCORE
+# YT-DLP INFO
 # =========================================================
-
-def calculate_music_score(
-    title: str,
-    description: str,
-    uploader: str,
-    channel: str
+def extract_info(
+    url: str
 ):
-
-    text = (
-        f"{title} "
-        f"{description} "
-        f"{uploader} "
-        f"{channel}"
-    )
-
-    matches = find_matches(
-        text,
-        MUSIC_KEYWORDS
-    )
-
-    score = 0
-
-    normalized_title = normalize_text(
-        title
-    )
-
-    normalized_all = normalize_text(
-        text
-    )
-
-    for keyword in matches:
-
-        normalized_keyword = normalize_text(
-            keyword
+    options = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "skip_download": True,
+    }
+    with yt_dlp.YoutubeDL(
+        options
+    ) as ytdl:
+        return ytdl.extract_info(
+            url,
+            download=False
         )
-
-        if normalized_keyword in normalized_title:
-
-            score += 4
-
-        elif normalized_keyword in normalized_all:
-
-            score += 2
-
-    return score, matches
-
-
+# =========================================================
+# DOWNLOAD AUDIO SAMPLE
+# =========================================================
+def download_audio_sample(
+    url: str,
+    output_file: str
+):
+    options = {
+        "format": "bestaudio/best",
+        "outtmpl": output_file,
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        # -------------------------------------------------
+        # Download only a short section
+        # -------------------------------------------------
+        "download_ranges": lambda info, ydl: [
+            {
+                "start_time": SAMPLE_START,
+                "end_time": (
+                    SAMPLE_START
+                    + SAMPLE_DURATION
+                ),
+            }
+        ],
+        # -------------------------------------------------
+        # Convert to MP3
+        # -------------------------------------------------
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "64",
+            }
+        ],
+    }
+    with yt_dlp.YoutubeDL(
+        options
+    ) as ytdl:
+        ytdl.download(
+            [url]
+        )
+# =========================================================
+# TRANSCRIBE AUDIO
+# =========================================================
+def transcribe_audio(
+    audio_file: str
+):
+    if not openai_client:
+        raise RuntimeError(
+            "OPENAI_API_KEY غير موجود."
+        )
+    with open(
+        audio_file,
+        "rb"
+    ) as file:
+        result = (
+            openai_client
+            .audio
+            .transcriptions
+            .create(
+                model=TRANSCRIPTION_MODEL,
+                file=file,
+                language="ar",
+                prompt=(
+                    "هذا تسجيل صوتي قد يكون تلاوة "
+                    "للقرآن الكريم باللغة العربية. "
+                    "اكتب الكلمات التي تسمعها كما هي."
+                ),
+            )
+        )
+    text = getattr(
+        result,
+        "text",
+        ""
+    )
+    return text or ""
+# =========================================================
+# AUDIO VERIFICATION
+# =========================================================
+async def verify_audio(
+    url: str
+):
+    # -----------------------------------------------------
+    # Check API
+    # -----------------------------------------------------
+    if not openai_client:
+        return {
+            "allowed": False,
+            "reason": (
+                "نظام فحص الصوت غير مفعّل لأن "
+                "OPENAI_API_KEY غير موجود."
+            ),
+            "score": 0.0,
+            "transcription": "",
+        }
+    # -----------------------------------------------------
+    # Check Quran data
+    # -----------------------------------------------------
+    if not QURAN_READY:
+        return {
+            "allowed": False,
+            "reason": (
+                "تعذر تحميل نص القرآن للتحقق."
+            ),
+            "score": 0.0,
+            "transcription": "",
+        }
+    # -----------------------------------------------------
+    # Temporary directory
+    # -----------------------------------------------------
+    temp_dir = tempfile.mkdtemp(
+        prefix="ct_quran_"
+    )
+    base_file = os.path.join(
+        temp_dir,
+        "sample"
+    )
+    mp3_file = os.path.join(
+        temp_dir,
+        "sample.mp3"
+    )
+    try:
+        # -------------------------------------------------
+        # Download sample
+        # -------------------------------------------------
+        print(
+            "[VERIFICATION] Downloading audio sample..."
+        )
+        await asyncio.to_thread(
+            download_audio_sample,
+            url,
+            base_file
+        )
+        # -------------------------------------------------
+        # Check generated file
+        # -------------------------------------------------
+        if not os.path.exists(
+            mp3_file
+        ):
+            # بعض إصدارات yt-dlp تغير الاسم
+            possible_files = []
+            for filename in os.listdir(
+                temp_dir
+            ):
+                full_path = os.path.join(
+                    temp_dir,
+                    filename
+                )
+                if os.path.isfile(
+                    full_path
+                ):
+                    possible_files.append(
+                        full_path
+                    )
+            if possible_files:
+                mp3_file = possible_files[0]
+            else:
+                raise RuntimeError(
+                    "لم يتم إنشاء ملف الصوت."
+                )
+        # -------------------------------------------------
+        # Transcribe
+        # -------------------------------------------------
+        print(
+            "[VERIFICATION] Transcribing audio..."
+        )
+        transcription = await asyncio.to_thread(
+            transcribe_audio,
+            mp3_file
+        )
+        print(
+            f"[VERIFICATION] Transcription: "
+            f"{transcription[:500]}"
+        )
+        # -------------------------------------------------
+        # Minimum text
+        # -------------------------------------------------
+        normalized_transcription = (
+            normalize_arabic(
+                transcription
+            )
+        )
+        if len(
+            normalized_transcription
+        ) < MIN_TRANSCRIPTION_LENGTH:
+            return {
+                "allowed": False,
+                "reason": (
+                    "لم يتم التعرف على كلام عربي "
+                    "واضح في العينة الصوتية."
+                ),
+                "score": 0.0,
+                "transcription": transcription,
+            }
+        # -------------------------------------------------
+        # Quran matching
+        # -------------------------------------------------
+        match = calculate_quran_match(
+            transcription
+        )
+        score = match["score"]
+        print(
+            f"[VERIFICATION] Quran match: "
+            f"{score:.2%}"
+        )
+        print(
+            f"[VERIFICATION] Matched ayahs: "
+            f"{match['matched_ayahs']}"
+        )
+        # -------------------------------------------------
+        # ACCEPT
+        # -------------------------------------------------
+        if score >= MIN_QURAN_MATCH:
+            return {
+                "allowed": True,
+                "reason": (
+                    "تم التحقق من الصوت نفسه "
+                    "ومطابقته مع نص القرآن."
+                ),
+                "score": score,
+                "transcription": transcription,
+            }
+        # -------------------------------------------------
+        # REJECT
+        # -------------------------------------------------
+        return {
+            "allowed": False,
+            "reason": (
+                "الصوت لم يحقق نسبة التطابق المطلوبة "
+                "مع نص القرآن."
+            ),
+            "score": score,
+            "transcription": transcription,
+        }
+    except Exception as e:
+        print(
+            f"[VERIFICATION] Audio verification error: {e}"
+        )
+        return {
+            "allowed": False,
+            "reason": (
+                "تعذر فحص الصوت."
+            ),
+            "score": 0.0,
+            "transcription": "",
+        }
+    finally:
+        # -------------------------------------------------
+        # Cleanup
+        # -------------------------------------------------
+        try:
+            for filename in os.listdir(
+                temp_dir
+            ):
+                path = os.path.join(
+                    temp_dir,
+                    filename
+                )
+                if os.path.isfile(
+                    path
+                ):
+                    os.remove(
+                        path
+                    )
+            os.rmdir(
+                temp_dir
+            )
+        except Exception:
+            pass
 # =========================================================
 # VERIFICATION RESULT
 # =========================================================
-
 class VerificationResult:
-
     def __init__(
         self,
         allowed: bool,
         reason: str,
-        score: int = 0
+        score: float = 0.0,
+        transcription: str = ""
     ):
-
         self.allowed = allowed
         self.reason = reason
         self.score = score
-
-
+        self.transcription = transcription
 # =========================================================
 # VERIFICATION COG
 # =========================================================
-
 class QuranVerification(
     commands.Cog
 ):
-
     def __init__(
         self,
         bot
     ):
-
         self.bot = bot
-
+        # تحميل القرآن في الخلفية
+        self.quran_task = (
+            asyncio.create_task(
+                self.load_quran_async()
+            )
+        )
+    # =====================================================
+    # LOAD QURAN ASYNC
+    # =====================================================
+    async def load_quran_async(
+        self
+    ):
+        await asyncio.to_thread(
+            load_quran
+        )
     # =====================================================
     # VERIFY URL
     # =====================================================
-
     async def verify_url(
         self,
         url: str
     ):
-
-        # -------------------------------------------------
-        # URL
-        # -------------------------------------------------
-
         if not url:
-
             return VerificationResult(
                 False,
                 "الرابط غير موجود."
             )
-
         if not is_supported_url(
             url
         ):
-
             return VerificationResult(
                 False,
                 "المنصة غير مدعومة."
             )
-
         # -------------------------------------------------
-        # YT-DLP
+        # Wait for Quran database
         # -------------------------------------------------
-
+        if not QURAN_READY:
+            try:
+                await asyncio.wait_for(
+                    self.quran_task,
+                    timeout=30
+                )
+            except Exception:
+                pass
+        # -------------------------------------------------
+        # Basic URL information
+        # -------------------------------------------------
         try:
-
-            import yt_dlp
-
-            options = {
-                "quiet": True,
-                "no_warnings": True,
-                "skip_download": True,
-                "noplaylist": True,
-            }
-
-            def extract():
-
-                with yt_dlp.YoutubeDL(
-                    options
-                ) as ytdl:
-
-                    return ytdl.extract_info(
-                        url,
-                        download=False
-                    )
-
             info = await asyncio.to_thread(
-                extract
+                extract_info,
+                url
             )
-
         except Exception as e:
-
             print(
-                f"[VERIFICATION] Extraction error: {e}"
+                f"[VERIFICATION] URL extraction error: {e}"
             )
-
             return VerificationResult(
                 False,
-                "تعذر قراءة المقطع."
+                "تعذر قراءة الرابط."
             )
-
-        # -------------------------------------------------
-        # INFO
-        # -------------------------------------------------
-
         if not info:
-
             return VerificationResult(
                 False,
                 "لم يتم العثور على معلومات المقطع."
             )
-
         if "entries" in info:
-
             entries = info.get(
                 "entries"
             )
-
             if not entries:
-
                 return VerificationResult(
                     False,
                     "لم يتم العثور على المقطع."
                 )
-
             info = entries[0]
-
         title = info.get(
             "title",
             ""
         ) or ""
-
-        description = info.get(
-            "description",
-            ""
-        ) or ""
-
-        uploader = info.get(
-            "uploader",
-            ""
-        ) or ""
-
-        channel = info.get(
-            "channel",
-            ""
-        ) or ""
-
-        # -------------------------------------------------
-        # SCORES
-        # -------------------------------------------------
-
-        quran = calculate_quran_score(
-            title=title,
-            description=description,
-            uploader=uploader,
-            channel=channel
-        )
-
-        music_score, music_matches = (
-            calculate_music_score(
-                title=title,
-                description=description,
-                uploader=uploader,
-                channel=channel
-            )
-        )
-
-        quran_score = quran["score"]
-
-        # -------------------------------------------------
-        # LOG
-        # -------------------------------------------------
-
         print(
-            "------------------------------------------"
+            f"[VERIFICATION] Checking audio: {title}"
         )
-
-        print(
-            f"[VERIFICATION] Title: {title}"
-        )
-
-        print(
-            f"[VERIFICATION] Uploader: {uploader}"
-        )
-
-        print(
-            f"[VERIFICATION] Channel: {channel}"
-        )
-
-        print(
-            f"[VERIFICATION] Quran Score: {quran_score}"
-        )
-
-        print(
-            f"[VERIFICATION] Music Score: {music_score}"
-        )
-
-        print(
-            f"[VERIFICATION] Quran Matches: "
-            f"{quran['matches']}"
-        )
-
-        print(
-            f"[VERIFICATION] Music Matches: "
-            f"{music_matches}"
-        )
-
-        print(
-            "------------------------------------------"
-        )
-
         # =================================================
-        # MUSIC DETECTION
+        # AUDIO CHECK
         # =================================================
-
-        # إذا كان فيه مؤشر موسيقى قوي جدًا
-        # نرفضه حتى لو كان فيه كلمة قرآن بشكل عابر.
-
-        if music_score >= 6:
-
-            return VerificationResult(
-                False,
-                "تم اكتشاف مؤشرات على أن المقطع أغنية أو موسيقى.",
-                quran_score
-            )
-
-        # =================================================
-        # QURAN ACCEPTANCE
-        # =================================================
-
-        # -------------------------------------------------
-        # قارئ معروف
-        # -------------------------------------------------
-
-        if quran["reciters"]:
-
-            return VerificationResult(
-                True,
-                "تم التعرف على اسم قارئ قرآن.",
-                quran_score
-            )
-
-        # -------------------------------------------------
-        # اسم سورة + مؤشر قرآن
-        # -------------------------------------------------
-
-        if (
-            quran["surahs"]
-            and quran["strong"]
-        ):
-
-            return VerificationResult(
-                True,
-                "تم التعرف على السورة ومؤشر قرآني.",
-                quran_score
-            )
-
-        # -------------------------------------------------
-        # مؤشرات قرآن قوية
-        # -------------------------------------------------
-
-        if quran["strong"]:
-
-            return VerificationResult(
-                True,
-                "تم التعرف على مؤشرات قوية للمحتوى القرآني.",
-                quran_score
-            )
-
-        # -------------------------------------------------
-        # أكثر من مؤشر قرآن
-        # -------------------------------------------------
-
-        if quran_score >= 5:
-
-            return VerificationResult(
-                True,
-                "تم التحقق من أن المقطع قرآني.",
-                quran_score
-            )
-
-        # -------------------------------------------------
-        # FINAL REJECTION
-        # -------------------------------------------------
-
+        audio_result = await verify_audio(
+            url
+        )
         return VerificationResult(
-            False,
-            "المقطع لم يحتوي على مؤشرات كافية تثبت أنه قرآن.",
-            quran_score
+            allowed=audio_result["allowed"],
+            reason=audio_result["reason"],
+            score=audio_result["score"],
+            transcription=audio_result["transcription"],
         )
-
     # =====================================================
     # REJECTION DM
     # =====================================================
-
     async def send_rejection_dm(
         self,
         user: discord.Member,
         reason: str
     ):
-
         message = (
             f"{user.mention}\n\n"
             "يا أخوي، **الأغاني لا تجوز، فتُب إلى الله واتركها، "
@@ -1075,70 +825,54 @@ class QuranVerification(
             "﴿إِنَّ اللَّهَ يَغْفِرُ الذُّنُوبَ جَمِيعًا﴾ 🤍\n\n"
             "اللهم اهدي قلوبنا وقلوبكم، ووفقنا لما تحب وترضى."
         )
-
         try:
-
             await user.send(
                 message
             )
-
             return True
-
         except discord.Forbidden:
-
             print(
                 f"[VERIFICATION] Cannot DM {user}"
             )
-
             return False
-
         except Exception as e:
-
             print(
                 f"[VERIFICATION] DM error: {e}"
             )
-
             return False
-
     # =====================================================
     # VERIFY FOR USER
     # =====================================================
-
     async def verify_for_user(
         self,
         guild: discord.Guild,
         user: discord.Member,
         url: str
     ):
-
         result = await self.verify_url(
             url
         )
-
         # -------------------------------------------------
         # APPROVED
         # -------------------------------------------------
-
         if result.allowed:
-
-            # تسجيل التشغيل المقبول
             add_play_history(
                 guild_id=guild.id,
                 user_id=user.id,
                 username=str(user),
                 url=url,
-                title="",
-                source="",
+                title="فحص صوتي",
+                source="audio-verification",
                 verified=True,
                 rejected=False
             )
-
+            print(
+                "[VERIFICATION] Quran audio approved."
+            )
             return True, result
-
         # -------------------------------------------------
         # REJECTED
         # -------------------------------------------------
-
         add_rejected_attempt(
             guild_id=guild.id,
             user_id=user.id,
@@ -1146,38 +880,43 @@ class QuranVerification(
             url=url,
             reason=result.reason
         )
-
         add_play_history(
             guild_id=guild.id,
             user_id=user.id,
             username=str(user),
             url=url,
-            title="",
-            source="",
+            title="فحص صوتي",
+            source="audio-verification",
             verified=False,
             rejected=True
         )
-
         # -------------------------------------------------
-        # SEND DM
+        # DM
         # -------------------------------------------------
-
         await self.send_rejection_dm(
             user,
             result.reason
         )
-
         return False, result
-
-
+    # =====================================================
+    # UNLOAD
+    # =====================================================
+    async def cog_unload(
+        self
+    ):
+        if (
+            self.quran_task
+            and not self.quran_task.done()
+        ):
+            self.quran_task.cancel()
 # =========================================================
 # SETUP
 # =========================================================
-
 async def setup(
     bot
 ):
-
     await bot.add_cog(
-        QuranVerification(bot)
+        QuranVerification(
+            bot
+        )
     )
