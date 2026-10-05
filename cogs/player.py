@@ -1,8 +1,11 @@
 # =========================================================
 # CT QURAN BOT
 # cogs/player.py
+#
+# AUDIO PLAYER
 # =========================================================
 
+import os
 import asyncio
 
 import discord
@@ -13,8 +16,8 @@ from discord.ext import commands
 from database import (
     get_voice_channel,
     add_to_queue,
-    get_queue,
     get_next_queue_item,
+    get_queue,
     remove_queue_item,
     clear_queue,
 )
@@ -24,129 +27,224 @@ from database import (
 # SETTINGS
 # =========================================================
 
-YTDL_OPTIONS = {
-    "format": "bestaudio/best",
-    "noplaylist": True,
-    "quiet": True,
-    "no_warnings": True,
-    "default_search": "auto",
-    "source_address": "0.0.0.0",
-}
-
-FFMPEG_OPTIONS = {
-    "before_options": (
-        "-reconnect 1 "
-        "-reconnect_streamed 1 "
-        "-reconnect_delay_max 5"
-    ),
-    "options": "-vn",
-}
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/140.0.0.0 Safari/537.36"
+)
 
 
 # =========================================================
 # YT-DLP
 # =========================================================
 
-ytdl = yt_dlp.YoutubeDL(
-    YTDL_OPTIONS
-)
+YTDL_OPTIONS = {
 
+    "format": (
+        "bestaudio[ext=m4a]/"
+        "bestaudio/best"
+    ),
 
-def get_audio(url: str):
+    "noplaylist": True,
 
-    info = ytdl.extract_info(
-        url,
-        download=False
-    )
+    "quiet": True,
 
-    if not info:
-        raise RuntimeError(
-            "لم يتم العثور على معلومات الرابط."
-        )
+    "no_warnings": True,
 
-    if "entries" in info:
+    "default_search": "auto",
 
-        entries = info.get(
-            "entries"
-        )
+    "source_address": "0.0.0.0",
 
-        if not entries:
-            raise RuntimeError(
-                "الرابط لا يحتوي على مقطع قابل للتشغيل."
-            )
+    "nocheckcertificate": True,
 
-        info = entries[0]
+    "socket_timeout": 30,
 
-    audio_url = info.get(
-        "url"
-    )
+    "retries": 3,
 
-    if not audio_url:
-        raise RuntimeError(
-            "لم يتم العثور على رابط الصوت."
-        )
+    "fragment_retries": 3,
 
-    return {
-        "url": audio_url,
-        "title": info.get(
-            "title",
-            "مقطع قرآن"
-        ),
-        "webpage_url": info.get(
-            "webpage_url",
-            url
-        ),
-        "source": info.get(
-            "extractor_key",
-            "Unknown"
-        ),
-    }
+    "extractor_retries": 3,
+
+    "http_headers": {
+        "User-Agent": BROWSER_USER_AGENT,
+        "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+    },
+
+    "extractor_args": {
+
+        "tiktok": {
+            "app_name": "musical_ly",
+            "app_version": "39.4.3",
+        }
+
+    },
+}
 
 
 # =========================================================
-# PLAYER
+# FFMPEG
+# =========================================================
+
+FFMPEG_OPTIONS = {
+
+    "before_options": (
+        "-reconnect 1 "
+        "-reconnect_streamed 1 "
+        "-reconnect_delay_max 5"
+    ),
+
+    "options": "-vn",
+
+}
+
+
+# =========================================================
+# COG
 # =========================================================
 
 class QuranPlayer(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(
+        self,
+        bot
+    ):
 
         self.bot = bot
 
-        # المقطع الحالي لكل سيرفر
-        self.current = {}
-
-        # Lock لكل سيرفر
-        self.locks = {}
-
-        # مهمة تشغيل الطابور لكل سيرفر
         self.queue_tasks = {}
 
+        self.current = {}
+
+        self.paused = {}
+
+        self.processing = set()
+
+
     # =====================================================
-    # LOCK
+    # YT-DLP
     # =====================================================
 
-    def get_lock(
+    async def extract_audio(
         self,
-        guild_id: int
+        url: str
     ):
 
-        if guild_id not in self.locks:
+        options = dict(
+            YTDL_OPTIONS
+        )
 
-            self.locks[guild_id] = (
-                asyncio.Lock()
+        try:
+
+            with yt_dlp.YoutubeDL(
+                options
+            ) as ytdl:
+
+                info = await asyncio.to_thread(
+                    ytdl.extract_info,
+                    url,
+                    False
+                )
+
+            if not info:
+
+                return None
+
+            if "entries" in info:
+
+                entries = info.get(
+                    "entries"
+                )
+
+                if not entries:
+
+                    return None
+
+                info = entries[0]
+
+            audio_url = info.get(
+                "url"
             )
 
-        return self.locks[guild_id]
+            if not audio_url:
+
+                formats = info.get(
+                    "formats",
+                    []
+                )
+
+                audio_formats = [
+                    f
+                    for f in formats
+                    if f.get("acodec")
+                    and f.get("acodec") != "none"
+                    and f.get("url")
+                ]
+
+                if not audio_formats:
+
+                    return None
+
+                audio_formats.sort(
+                    key=lambda x: (
+                        x.get(
+                            "abr",
+                            0
+                        ) or 0
+                    ),
+                    reverse=True
+                )
+
+                audio_url = audio_formats[0].get(
+                    "url"
+                )
+
+            if not audio_url:
+
+                return None
+
+            return {
+                "url": audio_url,
+                "title": info.get(
+                    "title",
+                    "قرآن"
+                ),
+                "webpage_url": info.get(
+                    "webpage_url",
+                    url
+                ),
+                "source": info.get(
+                    "extractor_key",
+                    info.get(
+                        "extractor",
+                        "unknown"
+                    )
+                ),
+            }
+
+        except Exception as e:
+
+            print(
+                "[PLAYER] "
+                f"Audio extraction error: {e}"
+            )
+
+            return None
+
 
     # =====================================================
-    # CONNECT TO CONFIGURED VOICE
+    # GET VOICE
     # =====================================================
 
-    async def connect_to_configured_voice(
+    async def get_voice_client(
         self,
         guild: discord.Guild
     ):
+
+        voice = guild.voice_client
+
+        if voice and voice.is_connected():
+
+            return voice
 
         channel_id = get_voice_channel(
             guild.id
@@ -154,75 +252,46 @@ class QuranPlayer(commands.Cog):
 
         if not channel_id:
 
-            print(
-                f"[PLAYER] No voice channel configured "
-                f"for guild {guild.id}"
-            )
-
             return None
 
         channel = guild.get_channel(
             channel_id
         )
 
-        if not isinstance(
-            channel,
-            discord.VoiceChannel
-        ):
-
-            print(
-                f"[PLAYER] Configured voice channel "
-                f"not found for guild {guild.id}"
-            )
+        if not channel:
 
             return None
 
-        voice = guild.voice_client
+        try:
 
-        # -------------------------------------------------
-        # BOT ALREADY CONNECTED
-        # -------------------------------------------------
-
-        if voice and voice.is_connected():
-
-            if voice.channel.id != channel.id:
-
-                try:
-
-                    await voice.move_to(
-                        channel
-                    )
-
-                except Exception as e:
-
-                    print(
-                        f"[PLAYER] Failed to move voice: {e}"
-                    )
-
-                    return None
+            voice = await channel.connect(
+                reconnect=True
+            )
 
             return voice
 
-        # -------------------------------------------------
-        # CONNECT
-        # -------------------------------------------------
+        except discord.ClientException:
 
-        try:
+            voice = guild.voice_client
 
-            return await channel.connect(
-                reconnect=True
-            )
+            if voice:
+
+                return voice
+
+            return None
 
         except Exception as e:
 
             print(
-                f"[PLAYER] Failed to connect to voice: {e}"
+                "[PLAYER] "
+                f"Voice connection error: {e}"
             )
 
             return None
 
+
     # =====================================================
-    # PLAY ITEM
+    # PLAY SOURCE
     # =====================================================
 
     async def play_item(
@@ -231,72 +300,36 @@ class QuranPlayer(commands.Cog):
         item
     ):
 
-        voice = await self.connect_to_configured_voice(
+        voice = await self.get_voice_client(
             guild
         )
 
         if not voice:
 
-            return False
-
-        # -------------------------------------------------
-        # EXTRACT AUDIO
-        # -------------------------------------------------
-
-        try:
-
-            audio = await asyncio.to_thread(
-                get_audio,
-                item["url"]
+            print(
+                "[PLAYER] "
+                "Could not connect to voice."
             )
 
-        except Exception as e:
+            return False
+
+        data = await self.extract_audio(
+            item["url"]
+        )
+
+        if not data:
 
             print(
-                f"[PLAYER] Failed to extract audio: {e}"
+                "[PLAYER] "
+                "Could not extract audio."
             )
 
             return False
 
-        # -------------------------------------------------
-        # CURRENT SONG
-        # -------------------------------------------------
-
-        self.current[guild.id] = {
-            "title": audio["title"],
-            "url": item["url"],
-            "user_id": item["user_id"],
-            "username": item["username"],
-            "source": audio["source"],
-        }
-
-        # -------------------------------------------------
-        # FFMPEG
-        # -------------------------------------------------
-
-        try:
-
-            source = discord.FFmpegPCMAudio(
-                audio["url"],
-                **FFMPEG_OPTIONS
-            )
-
-        except Exception as e:
-
-            print(
-                f"[PLAYER] FFmpeg error: {e}"
-            )
-
-            self.current.pop(
-                guild.id,
-                None
-            )
-
-            return False
-
-        # -------------------------------------------------
-        # WAIT FOR PLAYBACK TO FINISH
-        # -------------------------------------------------
+        source = discord.FFmpegPCMAudio(
+            data["url"],
+            **FFMPEG_OPTIONS
+        )
 
         finished = asyncio.Event()
 
@@ -305,7 +338,8 @@ class QuranPlayer(commands.Cog):
             if error:
 
                 print(
-                    f"[PLAYER] Playback error: {error}"
+                    "[PLAYER] "
+                    f"Playback error: {error}"
                 )
 
             try:
@@ -314,11 +348,17 @@ class QuranPlayer(commands.Cog):
                     finished.set
                 )
 
-            except Exception as e:
+            except Exception:
 
-                print(
-                    f"[PLAYER] Callback error: {e}"
-                )
+                pass
+
+        self.current[guild.id] = {
+            "title": data["title"],
+            "url": item["url"],
+            "user_id": item["user_id"],
+        }
+
+        self.paused[guild.id] = False
 
         try:
 
@@ -330,50 +370,34 @@ class QuranPlayer(commands.Cog):
         except Exception as e:
 
             print(
-                f"[PLAYER] Voice play error: {e}"
-            )
-
-            self.current.pop(
-                guild.id,
-                None
+                "[PLAYER] "
+                f"Play error: {e}"
             )
 
             return False
 
-        # -------------------------------------------------
-        # WAIT
-        # -------------------------------------------------
+        print(
+            "[PLAYER] "
+            f"Playing: {data['title']}"
+        )
 
-        try:
-
-            await finished.wait()
-
-        except asyncio.CancelledError:
-
-            if voice.is_playing() or voice.is_paused():
-
-                voice.stop()
-
-            self.current.pop(
-                guild.id,
-                None
-            )
-
-            raise
-
-        # -------------------------------------------------
-        # REMOVE CURRENT
-        # -------------------------------------------------
+        await finished.wait()
 
         self.current.pop(
             guild.id,
             None
         )
 
+        self.paused.pop(
+            guild.id,
+            None
+        )
+
         return True
 
+
     # =====================================================
-    # PROCESS QUEUE
+    # QUEUE PROCESSOR
     # =====================================================
 
     async def process_queue(
@@ -383,105 +407,61 @@ class QuranPlayer(commands.Cog):
 
         guild_id = guild.id
 
-        lock = self.get_lock(
-            guild_id
-        )
-
-        # -------------------------------------------------
-        # PREVENT TWO QUEUES AT ONCE
-        # -------------------------------------------------
-
-        if lock.locked():
+        if guild_id in self.processing:
 
             return
 
-        async with lock:
+        self.processing.add(
+            guild_id
+        )
 
-            try:
+        try:
 
-                while True:
+            while True:
 
-                    # -------------------------------------
-                    # GET NEXT ITEM
-                    # -------------------------------------
-
-                    item = get_next_queue_item(
-                        guild_id
-                    )
-
-                    if not item:
-
-                        break
-
-                    # -------------------------------------
-                    # REMOVE BEFORE PLAYING
-                    # -------------------------------------
-
-                    remove_queue_item(
-                        item["id"]
-                    )
-
-                    # -------------------------------------
-                    # PLAY
-                    # -------------------------------------
-
-                    success = await self.play_item(
-                        guild,
-                        item
-                    )
-
-                    if not success:
-
-                        print(
-                            "[PLAYER] Skipping failed item."
-                        )
-
-                        continue
-
-            except asyncio.CancelledError:
-
-                print(
-                    f"[PLAYER] Queue task cancelled "
-                    f"for guild {guild_id}"
+                item = get_next_queue_item(
+                    guild_id
                 )
 
-                raise
+                if not item:
 
-            except Exception as e:
+                    break
 
-                print(
-                    f"[PLAYER] Queue error: {e}"
+                remove_queue_item(
+                    item["id"]
                 )
 
-            finally:
-
-                # -----------------------------------------
-                # DISCONNECT WHEN QUEUE IS EMPTY
-                # -----------------------------------------
-
-                voice = guild.voice_client
-
-                if voice and voice.is_connected():
-
-                    try:
-
-                        await voice.disconnect()
-
-                    except Exception as e:
-
-                        print(
-                            f"[PLAYER] Disconnect error: {e}"
-                        )
-
-                self.current.pop(
-                    guild_id,
-                    None
+                success = await self.play_item(
+                    guild,
+                    item
                 )
 
-                self.queue_tasks.pop(
-                    guild_id,
-                    None
-                )
+                if not success:
+
+                    continue
+
+        except asyncio.CancelledError:
+
+            raise
+
+        except Exception as e:
+
+            print(
+                "[PLAYER] "
+                f"Queue error: {e}"
+            )
+
+        finally:
+
+            self.processing.discard(
+                guild_id
+            )
+
+            self.queue_tasks.pop(
+                guild_id,
+                None
+            )
+
 
     # =====================================================
     # START QUEUE
@@ -494,23 +474,17 @@ class QuranPlayer(commands.Cog):
 
         guild_id = guild.id
 
-        existing_task = self.queue_tasks.get(
+        if guild_id in self.processing:
+
+            return
+
+        existing = self.queue_tasks.get(
             guild_id
         )
 
-        # -------------------------------------------------
-        # QUEUE ALREADY RUNNING
-        # -------------------------------------------------
+        if existing and not existing.done():
 
-        if existing_task:
-
-            if not existing_task.done():
-
-                return existing_task
-
-        # -------------------------------------------------
-        # CREATE NEW QUEUE TASK
-        # -------------------------------------------------
+            return
 
         task = asyncio.create_task(
             self.process_queue(
@@ -520,7 +494,6 @@ class QuranPlayer(commands.Cog):
 
         self.queue_tasks[guild_id] = task
 
-        return task
 
     # =====================================================
     # ADD SONG
@@ -533,83 +506,55 @@ class QuranPlayer(commands.Cog):
         url: str
     ):
 
-        # -------------------------------------------------
-        # EXTRACT INFO FIRST
-        # -------------------------------------------------
-
         try:
 
-            audio = await asyncio.to_thread(
-                get_audio,
+            info = await self.extract_audio(
                 url
             )
 
-        except Exception as e:
+            if not info:
 
-            print(
-                f"[PLAYER] URL error: {e}"
+                return False, None
+
+            title = info.get(
+                "title",
+                "قرآن"
             )
 
-            return False, None
-
-        # -------------------------------------------------
-        # ADD TO DATABASE QUEUE
-        # -------------------------------------------------
-
-        try:
+            source = info.get(
+                "source",
+                "unknown"
+            )
 
             add_to_queue(
                 guild_id=guild.id,
                 user_id=user.id,
                 username=str(user),
                 url=url,
-                title=audio["title"],
-                source=audio["source"],
+                title=title,
+                source=source
             )
+
+            print(
+                "[PLAYER] "
+                f"Added to queue: {title}"
+            )
+
+            await self.start_queue(
+                guild
+            )
+
+            return True, title
 
         except Exception as e:
 
             print(
-                f"[PLAYER] Database queue error: {e}"
+                "[PLAYER] "
+                f"Add song error: {e}"
             )
 
             return False, None
 
-        # -------------------------------------------------
-        # START PLAYER
-        # -------------------------------------------------
-
-        await self.start_queue(
-            guild
-        )
-
-        return True, audio["title"]
-
-    # =====================================================
-    # GET CURRENT SONG
-    # =====================================================
-
-    def get_current(
-        self,
-        guild: discord.Guild
-    ):
-
-        return self.current.get(
-            guild.id
-        )
-
-    # =====================================================
-    # GET QUEUE
-    # =====================================================
-
-    def get_guild_queue(
-        self,
-        guild: discord.Guild
-    ):
-
-        return get_queue(
-            guild.id
-        )
 
     # =====================================================
     # PAUSE
@@ -630,19 +575,12 @@ class QuranPlayer(commands.Cog):
 
             return False
 
-        try:
+        voice.pause()
 
-            voice.pause()
+        self.paused[guild.id] = True
 
-            return True
+        return True
 
-        except Exception as e:
-
-            print(
-                f"[PLAYER] Pause error: {e}"
-            )
-
-            return False
 
     # =====================================================
     # RESUME
@@ -663,19 +601,12 @@ class QuranPlayer(commands.Cog):
 
             return False
 
-        try:
+        voice.resume()
 
-            voice.resume()
+        self.paused[guild.id] = False
 
-            return True
+        return True
 
-        except Exception as e:
-
-            print(
-                f"[PLAYER] Resume error: {e}"
-            )
-
-            return False
 
     # =====================================================
     # STOP
@@ -686,45 +617,30 @@ class QuranPlayer(commands.Cog):
         guild: discord.Guild
     ):
 
-        guild_id = guild.id
-
-        # -------------------------------------------------
-        # CLEAR QUEUE
-        # -------------------------------------------------
-
         clear_queue(
-            guild_id
+            guild.id
         )
-
-        self.current.pop(
-            guild_id,
-            None
-        )
-
-        # -------------------------------------------------
-        # STOP AUDIO
-        # -------------------------------------------------
 
         voice = guild.voice_client
 
         if voice:
 
-            try:
+            if voice.is_playing() or voice.is_paused():
 
-                if (
-                    voice.is_playing()
-                    or voice.is_paused()
-                ):
+                voice.stop()
 
-                    voice.stop()
+        self.current.pop(
+            guild.id,
+            None
+        )
 
-            except Exception as e:
-
-                print(
-                    f"[PLAYER] Stop error: {e}"
-                )
+        self.paused.pop(
+            guild.id,
+            None
+        )
 
         return True
+
 
     # =====================================================
     # SKIP
@@ -741,23 +657,14 @@ class QuranPlayer(commands.Cog):
 
             return False
 
-        if not voice.is_playing():
+        if not voice.is_playing() and not voice.is_paused():
 
             return False
 
-        try:
+        voice.stop()
 
-            voice.stop()
+        return True
 
-            return True
-
-        except Exception as e:
-
-            print(
-                f"[PLAYER] Skip error: {e}"
-            )
-
-            return False
 
     # =====================================================
     # LEAVE
@@ -768,84 +675,101 @@ class QuranPlayer(commands.Cog):
         guild: discord.Guild
     ):
 
-        guild_id = guild.id
-
-        # -------------------------------------------------
-        # CLEAR QUEUE
-        # -------------------------------------------------
-
-        clear_queue(
-            guild_id
-        )
-
-        self.current.pop(
-            guild_id,
-            None
-        )
-
-        # -------------------------------------------------
-        # CANCEL QUEUE TASK
-        # -------------------------------------------------
-
         task = self.queue_tasks.get(
-            guild_id
+            guild.id
         )
 
         if task and not task.done():
 
             task.cancel()
 
+        self.queue_tasks.pop(
+            guild.id,
+            None
+        )
+
+        clear_queue(
+            guild.id
+        )
+
+        voice = guild.voice_client
+
+        if voice:
+
             try:
 
-                await task
+                if voice.is_playing() or voice.is_paused():
 
-            except asyncio.CancelledError:
+                    voice.stop()
+
+            except Exception:
 
                 pass
+
+            try:
+
+                await voice.disconnect(
+                    force=True
+                )
 
             except Exception as e:
 
                 print(
-                    f"[PLAYER] Queue cancel error: {e}"
+                    "[PLAYER] "
+                    f"Disconnect error: {e}"
                 )
 
-        self.queue_tasks.pop(
-            guild_id,
+        self.current.pop(
+            guild.id,
             None
         )
 
-        # -------------------------------------------------
-        # DISCONNECT
-        # -------------------------------------------------
-
-        voice = guild.voice_client
-
-        if not voice:
-
-            return False
-
-        try:
-
-            await voice.disconnect()
-
-        except Exception as e:
-
-            print(
-                f"[PLAYER] Leave error: {e}"
-            )
-
-            return False
+        self.paused.pop(
+            guild.id,
+            None
+        )
 
         return True
 
+
     # =====================================================
-    # COG UNLOAD
+    # CURRENT
     # =====================================================
 
-    async def cog_unload(self):
+    def get_current(
+        self,
+        guild: discord.Guild
+    ):
 
-        for guild_id, task in list(
-            self.queue_tasks.items()
+        return self.current.get(
+            guild.id
+        )
+
+
+    # =====================================================
+    # QUEUE
+    # =====================================================
+
+    def get_guild_queue(
+        self,
+        guild: discord.Guild
+    ):
+
+        return get_queue(
+            guild.id
+        )
+
+
+    # =====================================================
+    # UNLOAD
+    # =====================================================
+
+    async def cog_unload(
+        self
+    ):
+
+        for task in list(
+            self.queue_tasks.values()
         ):
 
             if task and not task.done():
@@ -853,8 +777,6 @@ class QuranPlayer(commands.Cog):
                 task.cancel()
 
         self.queue_tasks.clear()
-        self.current.clear()
-        self.locks.clear()
 
 
 # =========================================================
